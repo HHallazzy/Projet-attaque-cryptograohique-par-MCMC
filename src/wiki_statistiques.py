@@ -109,7 +109,7 @@ def calculer_statistiques(texte: str) -> dict:
 # EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    sujet_wiki = "Chiffre_de_Vigenère"
+    sujet_wiki = "Acide_désoxyribonucléique"
     
     # Utilisation de la nouvelle fonction avec mise en cache
     texte_ref = obtenir_texte_reference(sujet_wiki)
@@ -120,7 +120,8 @@ if __name__ == "__main__":
         stats = calculer_statistiques(texte_ref)
         occurrences_triees = sorted(stats['occurrences'].items(), key=lambda x: x[1], reverse=True)
         
-        print("\nTop 5 des caracteres :")
-        for char, count in occurrences_triees[:5]:
+        # Affichage des 27 caractères comme demandé dans le sujet
+        print("\nStatistiques des 27 caracteres :")
+        for char, count in occurrences_triees:
             affichage_char = "[ESPACE]" if char == " " else char
             print(f"'{affichage_char}' : {count} fois ({stats['frequences'][char]:.2f}%)")
