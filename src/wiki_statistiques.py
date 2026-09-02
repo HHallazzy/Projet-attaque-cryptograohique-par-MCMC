@@ -9,6 +9,7 @@ from collections import Counter
 def recuperer_texte_wikipedia(titre_page: str) -> str:
     """
     Récupère le texte brut d'une page Wikipedia en français via l'API REST.
+    Pour récuperer en anglais, on change le "fr" en "en" dans l'URL.
     """
     titre_encode = urllib.parse.quote(titre_page)
     url = f"https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles={titre_encode}&format=json"
@@ -111,7 +112,7 @@ def calculer_statistiques(texte: str) -> dict:
 if __name__ == "__main__":
     sujet_wiki = "Acide_désoxyribonucléique"
     
-    # Utilisation de la nouvelle fonction avec mise en cache
+    # Utilisation de la fonction avec mise en cache
     texte_ref = obtenir_texte_reference(sujet_wiki)
     
     if texte_ref:
@@ -120,7 +121,7 @@ if __name__ == "__main__":
         stats = calculer_statistiques(texte_ref)
         occurrences_triees = sorted(stats['occurrences'].items(), key=lambda x: x[1], reverse=True)
         
-        # Affichage des 27 caractères comme demandé dans le sujet
+        # Affichage des 27 caractères
         print("\nStatistiques des 27 caracteres :")
         for char, count in occurrences_triees:
             affichage_char = "[ESPACE]" if char == " " else char
