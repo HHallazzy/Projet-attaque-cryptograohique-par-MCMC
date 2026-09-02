@@ -1,4 +1,3 @@
-# Importation de la fonction de cache créée dans le fichier précédent
 from wiki_statistiques import obtenir_texte_reference
 import random
 
@@ -55,10 +54,10 @@ def afficher_statistiques_digrammes(matrice_comptage: list):
     """
     _, index_to_char = creer_dictionnaires_conversion()
     
-    # 1. Calcul du total absolu de digrammes comptés
+    # Calcul du total absolu de digrammes comptés
     total_digrammes = sum(sum(ligne) for ligne in matrice_comptage)
     
-    # 2. Création d'une liste plate pour trier facilement les 729 valeurs
+    # Création d'une liste plate pour trier facilement les 729 valeurs
     stats = []
     for i in range(27):
         for j in range(27):
@@ -68,10 +67,10 @@ def afficher_statistiques_digrammes(matrice_comptage: list):
             frequence = (compte / total_digrammes * 100) if total_digrammes > 0 else 0
             stats.append((char1, char2, compte, frequence))
             
-    # 3. Tri par ordre décroissant (du plus fréquent au moins fréquent)
+    # Tri par ordre décroissant (du plus fréquent au moins fréquent)
     stats.sort(key=lambda x: x[2], reverse=True)
     
-    # 4. Affichage
+    # Affichage du résultat
     print(f"\nTotal des digrammes : {total_digrammes}")
     print("Statistiques des 729 digrammes :")
     for char1, char2, compte, freq in stats:
@@ -109,8 +108,6 @@ def generer_texte_markov(matrice_probabilites: list, longueur: int = 100) -> str
 # EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    # Assure-toi que le sujet correspond bien à un fichier existant dans ton dossier data/ 
-    # ou qu'il sera téléchargé par l'import.
     sujet_wiki = "Chiffre_de_Vigenère"
     
     texte_ref = obtenir_texte_reference(sujet_wiki)

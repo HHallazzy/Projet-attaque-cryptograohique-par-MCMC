@@ -58,7 +58,7 @@ def dechiffrer_vigenere(texte: str, mot_cle: str) -> str:
     return "".join(resultat)
 
 
-# --- Tests rapides à exécuter localement ---
+# --- Tests pour valider les fonctions ---
 if __name__ == "__main__":
     clair = "LE PROJET CRYPTO EST LANCE"
     
