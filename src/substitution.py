@@ -52,11 +52,35 @@ def chiffrer_texte(texte_clair: str, cle: str) -> str:
     
     return texte_chiffre
 
+def inverser_cle(cle: str) -> str:
+    """
+    Tiret 3 : Construire l'inverse de cette clé quand elle est connue.
+    Permet de retrouver la permutation exacte pour le déchiffrement.
+    """
+    # Pour chaque lettre de A à Z (ALPHABET_26), on cherche sa position dans la clé chiffrée.
+    # Cette position nous donne l'index de la lettre claire d'origine.
+    cle_inverse = "".join(ALPHABET_26[cle.index(lettre)] for lettre in ALPHABET_26)
+    
+    return cle_inverse
+
+def dechiffrer_texte(cryptogramme: str, cle: str) -> str:
+    """
+    Tiret 4 : Déchiffrer un texte chiffré avec une clé connue.
+    """
+    # 1. On calcule la clé inverse
+    cle_inverse = inverser_cle(cle)
+    
+    # 2. On applique exactement la même mécanique optimisée que pour le chiffrement
+    table_substitution = str.maketrans(ALPHABET_26, cle_inverse)
+    texte_dechiffre = cryptogramme.translate(table_substitution)
+    
+    return texte_dechiffre
+
 # ==========================================
 # EXECUTION TEST
 # ==========================================
 if __name__ == "__main__":
-    print("--- Test des outils de substitution (Section 1.3) ---")
+    print("Test des outils de substitution (Section 1.3)")
     
     # 1. Définition et vérification (Tiret 1)
     ma_cle = generer_cle()
@@ -64,11 +88,21 @@ if __name__ == "__main__":
     print(f"Clé générée    : {ma_cle}")
     
     if verifier_cle(ma_cle):
-        print("\n[OK] La clé est valide.")
-        
         # 2. Chiffrement (Tiret 2)
         texte_original = "LE PROJET AVANCE TRES BIEN"
         print(f"\nTexte clair    : {texte_original}")
         
         cryptogramme = chiffrer_texte(texte_original, ma_cle)
         print(f"Cryptogramme   : {cryptogramme}")
+        
+        # 3. Inversion de la clé (Tiret 3)
+        cle_inverse = inverser_cle(ma_cle)
+        print(f"\nClé inverse    : {cle_inverse}")
+        
+        # 4. Déchiffrement (Tiret 4)
+        texte_retrouve = dechiffrer_texte(cryptogramme, ma_cle)
+        print(f"Texte retrouvé : {texte_retrouve}")
+        
+        # Vérification finale
+        if texte_original == texte_retrouve:
+            print("\n[SUCCÈS] Le cycle chiffrement/déchiffrement fonctionne parfaitement.")
