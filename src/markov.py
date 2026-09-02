@@ -1,5 +1,6 @@
 # Importation de la fonction de cache créée dans le fichier précédent
 from wiki_statistiques import obtenir_texte_reference
+import random
 
 # Définition globale de notre alphabet de référence
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
@@ -80,6 +81,30 @@ def afficher_statistiques_digrammes(matrice_comptage: list):
         
         print(f"'{affichage_c1}{affichage_c2}' : {compte} fois ({freq:.4f}%)")
 
+def generer_texte_markov(matrice_probabilites: list, longueur: int = 100) -> str:
+    """
+    Génère du texte aléatoire en naviguant dans la matrice de transition.
+    Initialisé par "espace" selon la consigne.
+    """
+    char_to_index, index_to_char = creer_dictionnaires_conversion()
+    
+    # Initialisation
+    char_actuel = " "
+    texte_genere = [char_actuel]
+    
+    for _ in range(longueur - 1):
+        idx_actuel = char_to_index[char_actuel]
+        probabilites = matrice_probabilites[idx_actuel]
+        
+        # Tirage pondéré du prochain index
+        idx_suivant = random.choices(range(27), weights=probabilites, k=1)[0]
+        char_suivant = index_to_char[idx_suivant]
+        
+        texte_genere.append(char_suivant)
+        char_actuel = char_suivant
+        
+    return "".join(texte_genere)
+
 # ==========================================
 # EXECUTION
 # ==========================================
@@ -99,3 +124,8 @@ if __name__ == "__main__":
         
         # Tiret 2 : Création de la matrice de probabilités pour la suite
         probabilites = construire_matrice_transition(comptage)
+
+        # Tiret 3 : Génération de texte aléatoire
+        print("\n--- Génération de texte par chaîne de Markov ---")
+        texte_aleatoire = generer_texte_markov(probabilites, longueur=150)
+        print(f"\nRésultat (150 caractères) :\n{texte_aleatoire}")
