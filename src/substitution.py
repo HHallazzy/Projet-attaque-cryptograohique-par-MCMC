@@ -37,22 +37,38 @@ def verifier_cle(cle: str) -> bool:
         
     return True
 
+def chiffrer_texte(texte_clair: str, cle: str) -> str:
+    """
+    Tiret 2 : Appliquer la clé à un texte clair pour obtenir un cryptogramme.
+    Remplace chaque lettre selon la permutation de la clé, en ignorant les espaces.
+    """
+    # Création d'une table de correspondance (mapping) entre l'alphabet normal et la clé
+    table_substitution = str.maketrans(ALPHABET_26, cle)
+    
+    # La méthode translate parcourt la chaîne en C (très rapide) et remplace
+    # les caractères selon la table. Tout caractère absent de la table (l'espace)
+    # reste strictement inchangé.
+    texte_chiffre = texte_clair.translate(table_substitution)
+    
+    return texte_chiffre
+
 # ==========================================
 # EXECUTION TEST
 # ==========================================
 if __name__ == "__main__":
-    print("--- Test du premier tiret (Section 1.3) ---")
+    print("--- Test des outils de substitution (Section 1.3) ---")
     
-    # Définition
+    # 1. Définition et vérification (Tiret 1)
     ma_cle = generer_cle()
     print(f"Alphabet clair : {ALPHABET_26}")
     print(f"Clé générée    : {ma_cle}")
     
-    # Vérification
-    est_valide = verifier_cle(ma_cle)
-    print(f"\nLa clé générée est-elle valide ? {'Oui' if est_valide else 'Non'}")
-    
-    # Test d'une clé cassée pour prouver que la vérification fonctionne
-    cle_cassee = "AABCDEFGHIJKLMNOPQRSTUVWXY" # Deux fois 'A', pas de 'Z'
-    print(f"\nTest d'une clé cassée ({cle_cassee}) :")
-    verifier_cle(cle_cassee)
+    if verifier_cle(ma_cle):
+        print("\n[OK] La clé est valide.")
+        
+        # 2. Chiffrement (Tiret 2)
+        texte_original = "LE PROJET AVANCE TRES BIEN"
+        print(f"\nTexte clair    : {texte_original}")
+        
+        cryptogramme = chiffrer_texte(texte_original, ma_cle)
+        print(f"Cryptogramme   : {cryptogramme}")
