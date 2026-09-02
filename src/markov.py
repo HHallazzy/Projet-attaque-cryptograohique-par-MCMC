@@ -1,45 +1,101 @@
-import numpy as np
+# Importation de la fonction de cache créée dans le fichier précédent
+from wiki_statistiques import obtenir_texte_reference
 
 # Définition globale de notre alphabet de référence
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
 
 def creer_dictionnaires_conversion():
-    """Crée les correspondances entre les 27 caractères et les indices 0-26."""
+    """
+    Crée les correspondances entre les 27 caractères et les indices 0-26.
+    """
     char_to_index = {char: idx for idx, char in enumerate(ALPHABET)}
     index_to_char = {idx: char for idx, char in enumerate(ALPHABET)}
     return char_to_index, index_to_char
 
-def construire_matrice_transition(texte_reference: str) -> np.ndarray:
+def compter_digrammes(texte_reference: str) -> list:
     """
-    Construit une matrice 27x27 où la cellule [i, j] représente 
-    la probabilité de passer du caractère i au caractère j.
+    Tiret 1 : Établir les statistiques des digrammes.
+    Retourne une matrice 27x27 (liste de listes).
     """
     char_to_index, _ = creer_dictionnaires_conversion()
+    matrice_comptage = [[0 for _ in range(27)] for _ in range(27)]
     
-    # Initialisation d'une matrice 27x27 remplie de zéros
-    matrice_comptage = np.zeros((27, 27))
-    
-    # 1. Parcours du texte et comptage des digrammes consécutifs
     for i in range(len(texte_reference) - 1):
         char_actuel = texte_reference[i]
         char_suivant = texte_reference[i+1]
         
-        # Sécurité : on ignore les caractères hors de notre alphabet strict
         if char_actuel in char_to_index and char_suivant in char_to_index:
             idx_actuel = char_to_index[char_actuel]
             idx_suivant = char_to_index[char_suivant]
-            matrice_comptage[idx_actuel, idx_suivant] += 1
+            matrice_comptage[idx_actuel][idx_suivant] += 1
             
-    # 2. Normalisation des probabilités (la somme de chaque ligne doit être 1)
-    sommes_lignes = matrice_comptage.sum(axis=1, keepdims=True)
+    return matrice_comptage
+
+def construire_matrice_transition(matrice_comptage: list) -> list:
+    """
+    Tiret 2 : Construire la matrice de transitions de taille 27x27.
+    """
+    matrice_probabilites = [[0.0 for _ in range(27)] for _ in range(27)]
     
-    # Gestion des lignes vides (si une lettre n'a jamais été suivie d'une autre dans un texte court)
-    # Pour éviter la division par zéro, on remplace artificiellement par une distribution équiprobable
-    lignes_vides = (sommes_lignes == 0).flatten()
-    matrice_comptage[lignes_vides] = 1.0 / 27.0
-    sommes_lignes[lignes_vides] = 1.0
-    
-    # La magie de NumPy : on divise toute la matrice par la colonne des sommes en une seule opération
-    matrice_probabilites = matrice_comptage / sommes_lignes
-    
+    for i in range(27):
+        somme_ligne = sum(matrice_comptage[i])
+        for j in range(27):
+            if somme_ligne == 0:
+                matrice_probabilites[i][j] = 1.0 / 27.0
+            else:
+                matrice_probabilites[i][j] = matrice_comptage[i][j] / somme_ligne
+                
     return matrice_probabilites
+
+def afficher_statistiques_digrammes(matrice_comptage: list):
+    """
+    Affiche le total et la liste complète des 729 digrammes, 
+    triés par ordre d'apparition.
+    """
+    _, index_to_char = creer_dictionnaires_conversion()
+    
+    # 1. Calcul du total absolu de digrammes comptés
+    total_digrammes = sum(sum(ligne) for ligne in matrice_comptage)
+    
+    # 2. Création d'une liste plate pour trier facilement les 729 valeurs
+    stats = []
+    for i in range(27):
+        for j in range(27):
+            char1 = index_to_char[i]
+            char2 = index_to_char[j]
+            compte = matrice_comptage[i][j]
+            frequence = (compte / total_digrammes * 100) if total_digrammes > 0 else 0
+            stats.append((char1, char2, compte, frequence))
+            
+    # 3. Tri par ordre décroissant (du plus fréquent au moins fréquent)
+    stats.sort(key=lambda x: x[2], reverse=True)
+    
+    # 4. Affichage
+    print(f"\nTotal des digrammes : {total_digrammes}")
+    print("Statistiques des 729 digrammes :")
+    for char1, char2, compte, freq in stats:
+        # Pour que l'affichage soit lisible dans la console, on remplace visuellement l'espace par un tiret bas '_'
+        affichage_c1 = "_" if char1 == " " else char1
+        affichage_c2 = "_" if char2 == " " else char2
+        
+        print(f"'{affichage_c1}{affichage_c2}' : {compte} fois ({freq:.4f}%)")
+
+# ==========================================
+# EXECUTION
+# ==========================================
+if __name__ == "__main__":
+    # Assure-toi que le sujet correspond bien à un fichier existant dans ton dossier data/ 
+    # ou qu'il sera téléchargé par l'import.
+    sujet_wiki = "Chiffre_de_Vigenère"
+    
+    texte_ref = obtenir_texte_reference(sujet_wiki)
+    
+    if texte_ref:
+        print(f"\nCalcul sur un texte de {len(texte_ref)} caractères...")
+        
+        # Tiret 1 : Comptage et affichage complet
+        comptage = compter_digrammes(texte_ref)
+        afficher_statistiques_digrammes(comptage)
+        
+        # Tiret 2 : Création de la matrice de probabilités pour la suite
+        probabilites = construire_matrice_transition(comptage)
