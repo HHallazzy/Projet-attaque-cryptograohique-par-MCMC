@@ -1,8 +1,13 @@
 import random
+from collections import Counter
+from wiki_statistiques import obtenir_texte_reference
 
 # On utilise ici un alphabet strict de 26 lettres car le sujet précise 
 # que l'espace est conservé tel quel (il n'est pas permuté).
 ALPHABET_26 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+# Ordre d'apparition des lettres en français (approximatif, du plus fréquent au moins fréquent)
+ORDRE_FREQ_FR = "EAISTNRULODMPCVQGBFJHZXYKW"
 
 def generer_cle() -> str:
     """
@@ -73,6 +78,32 @@ def dechiffrer_texte(cryptogramme: str, cle: str) -> str:
     
     return texte_dechiffre
 
+def attaque_frequentielle(cryptogramme: str) -> str:
+    """
+    Tiret 5 : Développer une attaque fréquentielle (Section 1.3).
+    Tente de casser le cryptogramme en calquant ses fréquences sur celles du français.
+    """
+    # 1. On compte toutes les lettres du texte chiffré (en retirant les espaces pour ne pas les compter)
+    lettres_chiffrees = cryptogramme.replace(" ", "")
+    compteur = Counter(lettres_chiffrees)
+    
+    # 2. On récupère la liste des lettres chiffrées, triées de la plus à la moins fréquente
+    lettres_triees = [lettre for lettre, frequence in compteur.most_common()]
+    
+    # 3. Si le texte est court, il manque peut-être des lettres de l'alphabet. On complète avec le reste.
+    lettres_manquantes = [lettre for lettre in ALPHABET_26 if lettre not in lettres_triees]
+    lettres_triees.extend(lettres_manquantes)
+    
+    lettres_chiffrees_ordonnees = "".join(lettres_triees)
+    
+    # 4. On crée la table de traduction : la lettre n°1 chiffrée devient E, la n°2 devient A, etc.
+    table_craquage = str.maketrans(lettres_chiffrees_ordonnees, ORDRE_FREQ_FR)
+    
+    # 5. On applique la traduction au cryptogramme
+    texte_craque = cryptogramme.translate(table_craquage)
+    
+    return texte_craque
+
 # ==========================================
 # EXECUTION TEST
 # ==========================================
@@ -103,3 +134,23 @@ if __name__ == "__main__":
         # Vérification finale
         if texte_original == texte_retrouve:
             print("\n[SUCCÈS] Le cycle chiffrement/déchiffrement fonctionne parfaitement.")
+
+        # 5. Attaque fréquentielle (Tiret 5) sur une page Wikipédia
+        print("\n--- Lancement de l'attaque fréquentielle sur la page entière ---")
+        
+        texte_wiki = obtenir_texte_reference("Chiffre_de_Vigenère")
+        
+        if texte_wiki:
+            print(f"\nChiffrement puis attaque sur la totalité des {len(texte_wiki)} caractères...")
+            
+            # On chiffre la page
+            cryptogramme_long = chiffrer_texte(texte_wiki, ma_cle)
+            
+            # On attaque sur toute la page
+            texte_craque = attaque_frequentielle(cryptogramme_long)
+            
+            # On affiche les 500 premiers caractères pour voir le résultat
+            print(f"\nRésultat attaque (extrait) : \n{texte_craque[:500]}...\n")
+            
+            if texte_wiki != texte_craque:
+                print("Le résultat n'est pas compréhensible, mais on peut déjà voir des mots français apparaître comme 'DE', 'EST'...")
