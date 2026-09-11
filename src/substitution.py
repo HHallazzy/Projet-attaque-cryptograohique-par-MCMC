@@ -1,4 +1,6 @@
 import random
+import json
+import os
 from collections import Counter
 from wiki_statistiques import obtenir_texte_reference
 
@@ -6,7 +8,7 @@ from wiki_statistiques import obtenir_texte_reference
 # que l'espace est conservé tel quel (il n'est pas permuté).
 ALPHABET_26 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-# Ordre d'apparition des lettres en français (approximatif, du plus fréquent au moins fréquent)
+# Ordre d'apparition par défaut (au cas où le fichier JSON de la partie 1.2 manque)
 ORDRE_FREQ_FR = "EAISTNRULODMPCVQGBFJHZXYKW"
 
 def generer_cle() -> str:
@@ -14,13 +16,8 @@ def generer_cle() -> str:
     Tiret 1 (Partie 1) : Définir une clé de chiffrement.
     Génère une permutation aléatoire des 26 lettres de l'alphabet.
     """
-    # On transforme la chaîne en liste pour pouvoir la mélanger
     lettres = list(ALPHABET_26)
-    
-    # Mélange aléatoire (permutation)
     random.shuffle(lettres)
-    
-    # On reforme une chaîne de caractères
     return "".join(lettres)
 
 def verifier_cle(cle: str) -> bool:
@@ -29,13 +26,10 @@ def verifier_cle(cle: str) -> bool:
     Contrôle que la clé fait bien 26 caractères et contient 
     exactement une fois chaque lettre de l'alphabet.
     """
-    # On vérifie la longueur
     if len(cle) != 26:
         print("Erreur : La clé doit contenir exactement 26 caractères.")
         return False
         
-    # on vérifie que les caractères uniques correspondent exactement à A-Z
-    # on utilise set() pour éliminer les doublons automatiquement.
     if set(cle) != set(ALPHABET_26):
         print("Erreur : La clé contient des doublons ou des caractères non autorisés.")
         return False
@@ -47,11 +41,8 @@ def chiffrer_texte(texte_clair: str, cle: str) -> str:
     Tiret 2 : Appliquer la clé à un texte clair pour obtenir un cryptogramme.
     Remplace chaque lettre selon la permutation de la clé, en ignorant les espaces.
     """
-    # On crée une table de correspondance entre l'alphabet normal et la clé
     table_substitution = str.maketrans(ALPHABET_26, cle)
-    
     texte_chiffre = texte_clair.translate(table_substitution)
-    
     return texte_chiffre
 
 def inverser_cle(cle: str) -> str:
@@ -59,50 +50,127 @@ def inverser_cle(cle: str) -> str:
     Tiret 3 : Construire l'inverse de cette clé quand elle est connue.
     Permet de retrouver la permutation exacte pour le déchiffrement.
     """
-    # Pour chaque lettre de A à Z (ALPHABET_26), on cherche sa position dans la clé chiffrée.
-    # Cette position nous donne l'index de la lettre claire d'origine.
     cle_inverse = "".join(ALPHABET_26[cle.index(lettre)] for lettre in ALPHABET_26)
-    
     return cle_inverse
 
 def dechiffrer_texte(cryptogramme: str, cle: str) -> str:
     """
     Tiret 4 : Déchiffrer un texte chiffré avec une clé connue.
     """
-    # On calcule la clé inverse
     cle_inverse = inverser_cle(cle)
-    
-    # On applique exactement la même mécanique optimisée que pour le chiffrement
     table_substitution = str.maketrans(ALPHABET_26, cle_inverse)
     texte_dechiffre = cryptogramme.translate(table_substitution)
-    
     return texte_dechiffre
+
+# ==========================================
+# ATTAQUE SEQUENTIELLE INTERACTIVE (Saisie Manuelle)
+# ==========================================
+
+def appliquer_traduction_partielle(cryptogramme: str, cle_trouvee: dict) -> str:
+    """
+    Applique les correspondances validées au texte.
+    Affiche des '_' pour les lettres non encore décodées.
+    """
+    resultat = ""
+    for char in cryptogramme:
+        if char == " ":
+            resultat += " "
+        elif char in cle_trouvee:
+            resultat += cle_trouvee[char]
+        else:
+            resultat += "_"
+    return resultat
 
 def attaque_frequentielle(cryptogramme: str) -> str:
     """
     Tiret 5 : Développer une attaque fréquentielle (Section 1.3).
-    Tente de casser le cryptogramme en calquant ses fréquences sur celles du français.
+    Mode interactif manuel : Affiche les statistiques et laisse l'utilisateur
+    saisir ses propres choix avec des contrôles de sécurité.
     """
-    # 1. On compte toutes les lettres du texte chiffré (en retirant les espaces pour ne pas les compter)
+    # 1. Chargement des statistiques
+    chemin_stats = "data/stats_reference.json"
+    ordre_reference = list(ORDRE_FREQ_FR) 
+    
+    if os.path.exists(chemin_stats):
+        try:
+            with open(chemin_stats, 'r', encoding='utf-8') as fichier:
+                stats = json.load(fichier)
+                if 'ordre_lettres' in stats:
+                    ordre_reference = stats['ordre_lettres']
+                    print(f"[INFO] Stats de la base de données chargées avec succès !")
+        except Exception:
+            print("[ATTENTION] Erreur de lecture du JSON. Utilisation des stats par défaut.")
+    else:
+        print("[ATTENTION] Fichier JSON introuvable. Utilisation des stats par défaut.")
+
+    # 2. Analyse des fréquences du cryptogramme
     lettres_chiffrees = cryptogramme.replace(" ", "")
     compteur = Counter(lettres_chiffrees)
+    lettres_triees = [lettre for lettre, freq in compteur.most_common()]
     
-    # 2. On récupère la liste des lettres chiffrées, triées de la plus à la moins fréquente
-    lettres_triees = [lettre for lettre, frequence in compteur.most_common()]
+    cle_trouvee = {} # Dictionnaire des validations (ex: {X->E, Y->T})
     
-    # 3. Si le texte est court, il manque peut-être des lettres de l'alphabet. On complète avec le reste.
-    lettres_manquantes = [lettre for lettre in ALPHABET_26 if lettre not in lettres_triees]
-    lettres_triees.extend(lettres_manquantes)
+    print("\n" + "="*50)
+    print(" DÉBUT DE L'ATTAQUE INTERACTIVE (MODE MANUEL)")
+    print("="*50)
     
-    lettres_chiffrees_ordonnees = "".join(lettres_triees)
-    
-    # 4. On crée la table de traduction : la lettre n°1 chiffrée devient E, la n°2 devient A, etc.
-    table_craquage = str.maketrans(lettres_chiffrees_ordonnees, ORDRE_FREQ_FR)
-    
-    # 5. On applique la traduction au cryptogramme
-    texte_craque = cryptogramme.translate(table_craquage)
-    
-    return texte_craque
+    # 3. Boucle d'analyse pour chaque lettre chiffrée
+    for lettre_chif in lettres_triees:
+        valide = False
+        
+        while not valide:
+            # On calcule les lettres claires qui n'ont pas encore été utilisées
+            lettres_disponibles = [L for L in ordre_reference if L not in cle_trouvee.values()]
+            
+            if not lettres_disponibles:
+                break # L'alphabet complet a été trouvé
+                
+            # Affichage de l'aperçu du texte (limité à 300 caractères pour la lisibilité)
+            apercu = ""
+            for char in cryptogramme[:300]:
+                if char == " ":
+                    apercu += " "
+                elif char in cle_trouvee:
+                    apercu += cle_trouvee[char]
+                elif char == lettre_chif:
+                    apercu += "[?]" # Mise en évidence de la lettre en cours de traitement
+                else:
+                    apercu += "_"
+                    
+            print(f"\n[APERÇU] : {apercu}")
+            print(f"La lettre chiffrée '{lettre_chif}' est apparue {compteur[lettre_chif]} fois.")
+            
+            # Affichage de l'aide à la décision
+            print(f"-> Déjà validé : {', '.join(f'{k}->{v}' for k, v in cle_trouvee.items())}")
+            print(f"-> Lettres dispo (par ordre de proba) : {', '.join(lettres_disponibles)}")
+            
+            # Saisie utilisateur sécurisée : utilisation de 1 et 2 pour éviter le conflit avec les lettres
+            choix = input(f"Saisissez la lettre claire (1 = Passer, 2 = Quitter) : ").strip().upper()
+            
+            if choix == '2':
+                print("\n[INFO] Arrêt de l'analyse interactive.")
+                return appliquer_traduction_partielle(cryptogramme, cle_trouvee)
+                
+            elif choix == '1' or choix == '': # On accepte aussi la touche "Entrée" vide pour passer vite
+                print(f"[INFO] Vous avez passé la lettre '{lettre_chif}'.")
+                break # On sort du while pour passer à la lettre chiffrée suivante
+                
+            # Vérifications de sécurité de la saisie
+            elif len(choix) != 1 or choix not in ALPHABET_26:
+                print("[ERREUR] Saisie invalide. Veuillez entrer UNE seule lettre de A à Z (ou 1 / 2).")
+                
+            elif choix in cle_trouvee.values():
+                print(f"[ERREUR] Vous avez déjà utilisé la lettre '{choix}' ! Choisissez-en une autre.")
+                
+            else:
+                cle_trouvee[lettre_chif] = choix
+                valide = True
+                print(f"[SUCCÈS] '{lettre_chif}' est maintenant remplacé par '{choix}'.")
+                
+    print("\n" + "="*50)
+    print(" FIN DE L'ATTAQUE INTERACTIVE")
+    print("="*50)
+    return appliquer_traduction_partielle(cryptogramme, cle_trouvee)
 
 # ==========================================
 # EXECUTION TEST
@@ -110,47 +178,19 @@ def attaque_frequentielle(cryptogramme: str) -> str:
 if __name__ == "__main__":
     print("Test des outils de substitution (Section 1.3)")
     
-    # 1. Définition et vérification (Tiret 1)
     ma_cle = generer_cle()
-    print(f"Alphabet clair : {ALPHABET_26}")
-    print(f"Clé générée    : {ma_cle}")
     
     if verifier_cle(ma_cle):
-        # 2. Chiffrement (Tiret 2)
-        texte_original = "LE PROJET AVANCE TRES BIEN"
-        print(f"\nTexte clair    : {texte_original}")
-        
-        cryptogramme = chiffrer_texte(texte_original, ma_cle)
-        print(f"Cryptogramme   : {cryptogramme}")
-        
-        # 3. Inversion de la clé (Tiret 3)
-        cle_inverse = inverser_cle(ma_cle)
-        print(f"\nClé inverse    : {cle_inverse}")
-        
-        # 4. Déchiffrement (Tiret 4)
-        texte_retrouve = dechiffrer_texte(cryptogramme, ma_cle)
-        print(f"Texte retrouvé : {texte_retrouve}")
-        
-        # Vérification finale
-        if texte_original == texte_retrouve:
-            print("\n[SUCCÈS] Le cycle chiffrement/déchiffrement fonctionne parfaitement.")
-
-        # 5. Attaque fréquentielle (Tiret 5) sur une page Wikipédia
-        print("\n--- Lancement de l'attaque fréquentielle sur la page entière ---")
-        
+        print("\n--- Récupération d'un texte pour l'attaque ---")
         texte_wiki = obtenir_texte_reference("Chiffre_de_Vigenère")
         
         if texte_wiki:
-            print(f"\nChiffrement puis attaque sur la totalité des {len(texte_wiki)} caractères...")
+            texte_test = texte_wiki[:2000]
+            cryptogramme_test = chiffrer_texte(texte_test, ma_cle)
             
-            # On chiffre la page
-            cryptogramme_long = chiffrer_texte(texte_wiki, ma_cle)
+            print(f"\nCryptogramme généré ({len(cryptogramme_test)} caractères).")
+            print("Lancement de l'assistant de cryptanalyse...")
             
-            # On attaque sur toute la page
-            texte_craque = attaque_frequentielle(cryptogramme_long)
+            texte_craque = attaque_frequentielle(cryptogramme_test)
             
-            # On affiche les 500 premiers caractères pour voir le résultat
-            print(f"\nRésultat attaque (extrait) : \n{texte_craque[:500]}...\n")
-            
-            if texte_wiki != texte_craque:
-                print("Le résultat n'est pas compréhensible, mais on peut déjà voir des mots français apparaître comme 'DE', 'EST'...")
+            print(f"\nRésultat final de votre attaque :\n{texte_craque[:500]}...")

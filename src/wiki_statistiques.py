@@ -115,7 +115,7 @@ def sauvegarder_statistiques_json(stats_nouvelles: dict, titre_source: str, chem
     if dossier_cache and not os.path.exists(dossier_cache):
         os.makedirs(dossier_cache)
         
-    # Structure de base avec la nouvelle clé 'sources_traitees'
+    # Structure de base avec la clé 'sources_traitees'
     stats_globales = {
         'total': 0,
         'occurrences': {char: 0 for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ "},
