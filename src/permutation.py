@@ -1,3 +1,14 @@
+import random
+
+def generer_cle(n: int) -> list[int]:
+    """
+    Génère une clé de permutation aléatoire de taille n.
+    Utile pour générer des clés de départ pour l'algorithme MCMC (Partie 1.5).
+    """
+    cle = list(range(n))
+    random.shuffle(cle)
+    return cle
+
 def verifier_cle(cle: list[int]) -> bool:
     """
     Vérifie que la clé contient exactement tous les index de 0 à n-1 sans doublon.
@@ -58,6 +69,7 @@ def dechiffrer_permutation(cryptogramme: str, cle: list[int]) -> str:
 # EXECUTION TEST
 # ==========================================
 if __name__ == "__main__":
+    print("--- TEST 1 : Exemple exact du sujet ---")
     cle_exemple = [3, 0, 2, 1]
     texte = "BONJOUR"
     
@@ -70,3 +82,17 @@ if __name__ == "__main__":
         print(f"Texte clair   : '{texte}'")
         print(f"Cryptogramme  : '{chiffre}'")
         print(f"Texte retrouvé: '{dechiffre}'")
+        
+    print("\n--- TEST 2 : Test avec une clé aléatoire ---")
+    taille_bloc = 6 # On choisit une taille de bloc au hasard
+    cle_aleatoire = generer_cle(taille_bloc)
+    texte_long = "LE PROJET AVANCE SUPER BIEN"
+    
+    if verifier_cle(cle_aleatoire):
+        chiffre_alea = chiffrer_permutation(texte_long, cle_aleatoire)
+        dechiffre_alea = dechiffrer_permutation(chiffre_alea, cle_aleatoire)
+        
+        print(f"Clé générée (taille {taille_bloc}) : {cle_aleatoire}")
+        print(f"Texte clair   : '{texte_long}'")
+        print(f"Cryptogramme  : '{chiffre_alea}'")
+        print(f"Texte retrouvé: '{dechiffre_alea}'")
