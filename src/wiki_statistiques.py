@@ -81,7 +81,7 @@ def obtenir_texte_reference(titre_page: str) -> str:
 
 def calculer_statistiques(texte: str) -> dict:
     """
-    Calcule les occurrences et les frequences des 27 caracteres.
+    Calcule les occurrences et les frequences des 27 caracteres simples.
     """
     compteur = Counter(texte)
     total_caracteres = len(texte)
@@ -98,7 +98,6 @@ def calculer_statistiques(texte: str) -> dict:
         resultats['occurrences'][char] = nb
         resultats['frequences'][char] = (nb / total_caracteres * 100) if total_caracteres > 0 else 0
         
-    # Création d'une liste des lettres (sans l'espace) triées par fréquence décroissante
     lettres_triees = sorted([c for c in alphabet if c != ' '], 
                             key=lambda x: resultats['frequences'][x], 
                             reverse=True)
@@ -106,22 +105,37 @@ def calculer_statistiques(texte: str) -> dict:
         
     return resultats
 
-def sauvegarder_statistiques_json(stats_nouvelles: dict, titre_source: str, chemin_fichier="data/stats_reference.json"):
+def calculer_statistiques_digrammes(texte: str) -> dict:
+    """
+    Calcule les occurrences des 729 digrammes (couples de caractères consécutifs).
+    """
+    digrammes = [texte[i:i+2] for i in range(len(texte)-1)]
+    compteur = Counter(digrammes)
+    
+    resultats = {}
+    for digramme, count in compteur.items():
+        if len(digramme) == 2: 
+            resultats[digramme] = count
+            
+    return resultats
+
+def sauvegarder_statistiques_json(stats_nouvelles: dict, stats_digrammes: dict, titre_source: str, chemin_fichier="data/stats_reference.json"):
     """
     Sauvegarde et accumule le dictionnaire de statistiques au format JSON.
-    Empêche les doublons en mémorisant les sources déjà traitées.
+    Intègre désormais les unigrammes ET les digrammes.
     """
     dossier_cache = os.path.dirname(chemin_fichier)
     if dossier_cache and not os.path.exists(dossier_cache):
         os.makedirs(dossier_cache)
         
-    # Structure de base avec la clé 'sources_traitees'
+    # Structure de base incluant la nouvelle clé 'digrammes'
     stats_globales = {
         'total': 0,
         'occurrences': {char: 0 for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ "},
         'frequences': {},
         'ordre_lettres': [],
-        'sources_traitees': [] 
+        'sources_traitees': [],
+        'digrammes': {}
     }
 
     # 1. Lire les anciennes statistiques
@@ -132,6 +146,7 @@ def sauvegarder_statistiques_json(stats_nouvelles: dict, titre_source: str, chem
                 stats_globales['total'] = stats_anciennes.get('total', 0)
                 stats_globales['occurrences'] = stats_anciennes.get('occurrences', stats_globales['occurrences'])
                 stats_globales['sources_traitees'] = stats_anciennes.get('sources_traitees', [])
+                stats_globales['digrammes'] = stats_anciennes.get('digrammes', {})
         except json.JSONDecodeError:
             pass
 
@@ -139,52 +154,53 @@ def sauvegarder_statistiques_json(stats_nouvelles: dict, titre_source: str, chem
     if titre_source in stats_globales['sources_traitees']:
         print(f"\n[INFO] La page '{titre_source}' est déjà dans la base de données.")
         print("-> Accumulation annulée pour éviter de fausser les statistiques.")
-        return # On arrête la fonction ici
+        return 
 
-    # 3. Additionner les nouvelles occurrences
+    # 3. Additionner les nouvelles occurrences (Unigrammes)
     stats_globales['total'] += stats_nouvelles['total']
     for char, count in stats_nouvelles['occurrences'].items():
         stats_globales['occurrences'][char] += count
         
-    # 4. Mémoriser la nouvelle source
+    # 4. Additionner les occurrences des Digrammes
+    for digramme, count in stats_digrammes.items():
+        stats_globales['digrammes'][digramme] = stats_globales['digrammes'].get(digramme, 0) + count
+
+    # 5. Mémoriser la nouvelle source
     stats_globales['sources_traitees'].append(titre_source)
 
-    # 5. Recalculer les fréquences globales
+    # 6. Recalculer les fréquences globales
     for char, count in stats_globales['occurrences'].items():
         stats_globales['frequences'][char] = (count / stats_globales['total'] * 100) if stats_globales['total'] > 0 else 0
 
-    # 6. Recalculer l'ordre des lettres (sans l'espace)
+    # 7. Recalculer l'ordre des lettres
     alphabet_sans_espace = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     lettres_triees = sorted(list(alphabet_sans_espace), 
                             key=lambda x: stats_globales['frequences'][x], 
                             reverse=True)
     stats_globales['ordre_lettres'] = lettres_triees
 
-    # 7. Sauvegarder
+    # 8. Sauvegarder
     with open(chemin_fichier, 'w', encoding='utf-8') as fichier:
         json.dump(stats_globales, fichier, indent=4)
         
     print(f"\n[SUCCÈS] Statistiques de '{titre_source}' accumulées !")
-    print(f"Total des caractères dans la base de données : {stats_globales['total']}")
+    print(f"Total des caractères dans la base : {stats_globales['total']}")
+    print(f"Total de digrammes distincts stockés : {len(stats_globales['digrammes'])}")
 
 # ==========================================
 # EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    sujet_wiki = "chiffrement_par_décalage"
+    sujet_wiki = "France"
     
     texte_ref = obtenir_texte_reference(sujet_wiki)
     
     if texte_ref:
         print(f"\nLongueur du texte de reference : {len(texte_ref)} caracteres.")
         
+        # Calcul des statistiques (lettres ET digrammes)
         stats = calculer_statistiques(texte_ref)
-        occurrences_triees = sorted(stats['occurrences'].items(), key=lambda x: x[1], reverse=True)
+        stats_dig = calculer_statistiques_digrammes(texte_ref)
         
-        print("\nStatistiques des 27 caracteres :")
-        for char, count in occurrences_triees:
-            affichage_char = "[ESPACE]" if char == " " else char
-            print(f"'{affichage_char}' : {count} fois ({stats['frequences'][char]:.2f}%)")
-            
-        # Appel de la fonction de sauvegarde de statistiques
-        sauvegarder_statistiques_json(stats, sujet_wiki)
+        # Appel de la fonction de sauvegarde avec le nouvel argument
+        sauvegarder_statistiques_json(stats, stats_dig, sujet_wiki)
