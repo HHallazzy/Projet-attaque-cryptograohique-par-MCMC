@@ -9,6 +9,35 @@ def generer_cle(n: int) -> list[int]:
     random.shuffle(cle)
     return cle
 
+def muter_permutation(cle_actuelle: list[int]) -> list[int]:
+    """
+    Crée une variation de la clé en DÉPLAÇANT un sous-bloc entier.
+    (Conforme aux exigences de la chaîne de Markov pour la permutation).
+    """
+    n = len(cle_actuelle)
+    if n <= 1:
+        return cle_actuelle.copy()
+        
+    nouvelle_cle = cle_actuelle.copy()
+    
+    # 1. Choisir aléatoirement la taille du bloc à déplacer (entre 1 et n-1 éléments)
+    taille_bloc = random.randint(1, n - 1)
+    
+    # 2. Choisir l'index de départ du bloc
+    index_depart = random.randint(0, n - taille_bloc)
+    
+    # 3. Extraire le bloc et le supprimer de la liste
+    bloc = nouvelle_cle[index_depart : index_depart + taille_bloc]
+    del nouvelle_cle[index_depart : index_depart + taille_bloc]
+    
+    # 4. Choisir une nouvelle position d'insertion dans la liste restante
+    index_insertion = random.randint(0, len(nouvelle_cle))
+    
+    # 5. Réinsérer le bloc à sa nouvelle place
+    nouvelle_cle[index_insertion:index_insertion] = bloc
+    
+    return nouvelle_cle
+
 def verifier_cle(cle: list[int]) -> bool:
     """
     Vérifie que la clé contient exactement tous les index de 0 à n-1 sans doublon.

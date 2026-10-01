@@ -19,7 +19,6 @@ def main():
         fichier_complet = json.load(f)
         stats_reference = fichier_complet.get("digrammes", {})
 
-    # Menu interactif
     print("="*50)
     print("   OUTIL D'ATTAQUE CRYPTOGRAPHIQUE MCMC")
     print("="*50)
@@ -33,7 +32,6 @@ def main():
         if not texte_complet:
             return
 
-        # On prend un échantillon représentatif pour le calcul (optimisation du temps)
         texte_clair = texte_complet[:2500] 
         iterations_str = input("\nCombien d'itérations pour le MCMC ? (Défaut: 15000) : ")
         iterations = int(iterations_str) if iterations_str.isdigit() else 15000
@@ -43,40 +41,45 @@ def main():
             cryptogramme = substitution.chiffrer_texte(texte_clair, cle_secrete)
             
             print("\n[+] Création de la cible (Substitution) terminée.")
+            print(f"Clé secrète cible     : {cle_secrete}")
             print(f"Cryptogramme (aperçu) : {cryptogramme[:80]}...")
-            print(f"\nLancement de l'attaque sur {iterations} itérations...")
+            print(f"\nLancement de l'attaque sur {iterations} itérations (Burn-in de 15%)...")
             
-            cle_trouvee, texte_trouve = attaque_mcmc_substitution(cryptogramme, iterations, stats_reference)
+            top_cles = attaque_mcmc_substitution(cryptogramme, iterations, stats_reference)
             
             print("\n" + "="*50)
-            print("--- RÉSULTATS DE L'ALGORITHME ---")
-            print(f"Clé déduite       : {cle_trouvee}")
-            print(f"Texte déchiffré   : {texte_trouve[:150]}... (tronqué)")
+            print("--- RÉSULTATS (TOP 3 DES CLÉS LES PLUS VISITÉES) ---")
             
-            lettres_correctes = sum(1 for a, b in zip(cle_secrete, cle_trouvee) if a == b)
-            print(f"\nPrécision de clé  : {lettres_correctes}/26 lettres exactes.")
+            # Affichage des 3 clés où la chaîne est restée le plus longtemps
+            for rang, (cle, visites) in enumerate(top_cles[:3], 1):
+                texte_dechiffre = substitution.dechiffrer_texte(cryptogramme, cle)
+                lettres_correctes = sum(1 for a, b in zip(cle_secrete, cle) if a == b)
+                print(f"\n[#{rang}] Clé : {cle} (Visitée {visites} fois)")
+                print(f"      Précision : {lettres_correctes}/26 exactes")
+                print(f"      Texte     : {texte_dechiffre[:120]}...")
 
         elif choix == "2":
-            taille_bloc = 10 # Taille standard pour tester
+            taille_bloc = 10
             cle_secrete = permutation.generer_cle(taille_bloc)
-            # Utilisation de chiffrer_permutation au lieu de chiffrer_texte pour correspondre à ton fichier
             cryptogramme = permutation.chiffrer_permutation(texte_clair, cle_secrete)
             
             print("\n[+] Création de la cible (Permutation) terminée.")
             print(f"Clé secrète (indices) : {cle_secrete}")
             print(f"Cryptogramme (aperçu) : {cryptogramme[:80]}...")
-            print(f"\nLancement de l'attaque sur {iterations} itérations...")
+            print(f"\nLancement de l'attaque sur {iterations} itérations (Burn-in de 15%)...")
             
-            # Appel de l'attaque MCMC pour la permutation
-            cle_trouvee, texte_trouve = attaque_mcmc_permutation(cryptogramme, iterations, stats_reference, taille_bloc)
+            top_cles = attaque_mcmc_permutation(cryptogramme, iterations, stats_reference, taille_bloc)
             
             print("\n" + "="*50)
-            print("--- RÉSULTATS DE L'ALGORITHME ---")
-            print(f"Clé déduite       : {cle_trouvee}")
-            print(f"Texte déchiffré   : {texte_trouve[:150]}... (tronqué)")
+            print("--- RÉSULTATS (CLÉS LES PLUS VISITÉES - JUSQU'À 3 MAXIMUM) ---")
             
-            indices_corrects = sum(1 for a, b in zip(cle_secrete, cle_trouvee) if a == b)
-            print(f"\nPrécision de clé  : {indices_corrects}/{taille_bloc} positions exactes.")
+            # Affichage des 3 clés où la chaîne est restée le plus longtemps
+            for rang, (cle, visites) in enumerate(top_cles[:3], 1):
+                texte_dechiffre = permutation.dechiffrer_permutation(cryptogramme, cle)
+                indices_corrects = sum(1 for a, b in zip(cle_secrete, cle) if a == b)
+                print(f"\n[#{rang}] Clé : {cle} (Visitée {visites} fois)")
+                print(f"      Précision : {indices_corrects}/{taille_bloc} exactes")
+                print(f"      Texte     : {texte_dechiffre[:120]}...")
 
     elif choix == "3":
         print("Fermeture du programme.")

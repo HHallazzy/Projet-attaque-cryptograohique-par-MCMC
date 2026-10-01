@@ -20,6 +20,18 @@ def generer_cle() -> str:
     random.shuffle(lettres)
     return "".join(lettres)
 
+def muter_substitution(cle_actuelle: str) -> str:
+    """
+    Génère une clé voisine par transposition de deux lettres.
+    Le tirage des deux positions se fait selon une loi uniforme.
+    """
+    cle_liste = list(cle_actuelle)
+    # Tirage de 2 indices distincts entre 0 et 25 (loi uniforme)
+    i, j = random.sample(range(26), 2)
+    # Échange (transposition)
+    cle_liste[i], cle_liste[j] = cle_liste[j], cle_liste[i]
+    return "".join(cle_liste)
+
 def verifier_cle(cle: str) -> bool:
     """
     Tiret 1 (Partie 2) : Vérifier une clé de chiffrement.

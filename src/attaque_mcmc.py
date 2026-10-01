@@ -2,130 +2,99 @@ import math
 import random
 from collections import Counter
 
-# Importation des modules existants selon l'architecture définie
 import substitution
 import permutation
 
-def calculer_log_score(texte_dechiffre: str, stats_reference: dict) -> float:
+def calculer_log_score(texte_dechiffre: str, log_stats_reference: dict) -> float:
     """
     Mesure la plausibilité linguistique d'un texte déchiffré.
-    Utilise la somme des logarithmes pour éviter l'overflow.
+    Utilise les logarithmes PRÉCALCULÉS pour optimiser la vitesse de calcul (Phase 2).
     """
-    # On compte les occurrences des digrammes dans le texte déchiffré
-    # zip permet de créer des paires de caractères consécutifs rapidement
     digrammes_texte = Counter(texte_dechiffre[i:i+2] for i in range(len(texte_dechiffre)-1))
     
     log_score = 0.0
     alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
     
-    # On parcourt les 27^2 = 729 couples possibles (x,y)
+    # On parcourt les 27^2 = 729 couples possibles
     for x in alphabet:
         for y in alphabet:
             xy = x + y
-            # fk(x,y) = 1 + occurrences dans le texte déchiffré
             f_k = 1 + digrammes_texte.get(xy, 0)
             
-            # r(x,y) = 1 + occurrences dans la référence
-            # On suppose que stats_reference contient déjà cette valeur r(x,y) pour chaque clé 'xy'
-            # Si le digramme n'est pas dans le dico, sa valeur par défaut est 1 (0 occurrence + 1)
-            r_xy = stats_reference.get(xy, 1) 
+            # ln_r est déjà calculé. Si le digramme est inconnu, ln(1) = 0.0
+            ln_r = log_stats_reference.get(xy, 0.0) 
             
-            # ln S(k) = Somme ( fk(x,y) * ln(r(x,y)) )
-            log_score += f_k * math.log(r_xy)
+            log_score += f_k * ln_r
             
     return log_score
 
-def muter_substitution(cle_actuelle: str) -> str:
+def attaque_mcmc_substitution(cryptogramme: str, iterations: int, stats_reference: dict) -> list:
     """
-    Génère une clé voisine par transposition de deux lettres au hasard.
+    Pilote l'algorithme Metropolis-Hastings pour la substitution.
+    Implémente le Burn-in et l'échantillonnage par fréquences de visites (Phase 3).
     """
-    cle_liste = list(cle_actuelle)
-    # Tirage de 2 indices distincts entre 0 et 25
-    i, j = random.sample(range(26), 2)
-    # Échange (transposition)
-    cle_liste[i], cle_liste[j] = cle_liste[j], cle_liste[i]
-    return "".join(cle_liste)
-
-def muter_permutation(cle_actuelle: list) -> list:
-    """
-    Crée une variation de la clé de permutation en intervertissant deux index.
-    """
-    nouvelle_cle = cle_actuelle.copy()
-    i, j = random.sample(range(len(nouvelle_cle)), 2)
-    nouvelle_cle[i], nouvelle_cle[j] = nouvelle_cle[j], nouvelle_cle[i]
-    return nouvelle_cle
-
-def attaque_mcmc_substitution(cryptogramme: str, iterations: int, stats_reference: dict) -> tuple:
-    """
-    Pilote l'algorithme Metropolis-Hastings pour la substitution mono-alphabétique.
-    Retourne la meilleure clé trouvée et le texte déchiffré correspondant.
-    """
-    # 1. Initialisation (État 0)
+    # PRÉCALCUL : On calcule les logarithmes une seule fois avant la boucle
+    log_stats_reference = {k: math.log(v) for k, v in stats_reference.items() if v > 0}
+    
     cle_courante = substitution.generer_cle()
     texte_courant = substitution.dechiffrer_texte(cryptogramme, cle_courante)
-    score_courant = calculer_log_score(texte_courant, stats_reference)
+    score_courant = calculer_log_score(texte_courant, log_stats_reference)
     
-    # Historique absolu (Optimisation mémoire)
-    meilleure_cle_absolue = cle_courante
-    meilleur_score_absolu = score_courant
-    meilleur_texte = texte_courant
+    frequences_visites = {}
+    burn_in = int(iterations * 0.15) # 15% d'itérations ignorées au début
     
-    # 2. Boucle de Markov
-    for _ in range(iterations):
-        # Mutation
-        cle_voisine = muter_substitution(cle_courante)
+    for i in range(iterations):
+        cle_voisine = substitution.muter_substitution(cle_courante)
         texte_voisin = substitution.dechiffrer_texte(cryptogramme, cle_voisine)
-        score_voisin = calculer_log_score(texte_voisin, stats_reference)
+        score_voisin = calculer_log_score(texte_voisin, log_stats_reference)
         
-        # Sélection
         delta = score_voisin - score_courant
         
-        # Si le score voisin est meilleur (delta > 0), ou si accepté par probabilité U
+        # Test d'acceptation probabiliste
         if delta > 0 or math.log(random.uniform(0, 1)) < delta:
-            # On accepte la mutation
             cle_courante = cle_voisine
             score_courant = score_voisin
             
-            # Mise à jour du record absolu si nécessaire
-            if score_courant > meilleur_score_absolu:
-                meilleur_score_absolu = score_courant
-                meilleure_cle_absolue = cle_courante
-                meilleur_texte = texte_voisin
-                
-    return meilleure_cle_absolue, meilleur_texte
+        # ENREGISTREMENT : On compte les visites uniquement après la chauffe
+        if i >= burn_in:
+            frequences_visites[cle_courante] = frequences_visites.get(cle_courante, 0) + 1
+            
+    # Trie les clés par nombre de visites décroissant
+    top_cles = sorted(frequences_visites.items(), key=lambda x: x[1], reverse=True)
+    return top_cles
 
 
-def attaque_mcmc_permutation(cryptogramme: str, iterations: int, stats_reference: dict, longueur_l: int) -> tuple:
+def attaque_mcmc_permutation(cryptogramme: str, iterations: int, stats_reference: dict, longueur_l: int) -> list:
     """
     Pilote l'algorithme Metropolis-Hastings pour la permutation par blocs.
     """
-    # 1. Initialisation
+    log_stats_reference = {k: math.log(v) for k, v in stats_reference.items() if v > 0}
+    
     cle_courante = permutation.generer_cle(longueur_l)
     texte_courant = permutation.dechiffrer_permutation(cryptogramme, cle_courante)
-    score_courant = calculer_log_score(texte_courant, stats_reference)
+    score_courant = calculer_log_score(texte_courant, log_stats_reference)
     
-    meilleure_cle_absolue = cle_courante
-    meilleur_score_absolu = score_courant
-    meilleur_texte = texte_courant
+    frequences_visites = {}
+    burn_in = int(iterations * 0.15)
     
-    # 2. Boucle de Markov
-    for _ in range(iterations):
-        # Mutation
-        cle_voisine = muter_permutation(cle_courante)
+    for i in range(iterations):
+        cle_voisine = permutation.muter_permutation(cle_courante)
         texte_voisin = permutation.dechiffrer_permutation(cryptogramme, cle_voisine)
-        score_voisin = calculer_log_score(texte_voisin, stats_reference)
+        score_voisin = calculer_log_score(texte_voisin, log_stats_reference)
         
-        # Sélection
         delta = score_voisin - score_courant
         
         if delta > 0 or math.log(random.uniform(0, 1)) < delta:
-            # On accepte d'aller dans l'état k'
             cle_courante = cle_voisine
             score_courant = score_voisin
             
-            if score_courant > meilleur_score_absolu:
-                meilleur_score_absolu = score_courant
-                meilleure_cle_absolue = cle_courante
-                meilleur_texte = texte_voisin
-                
-    return meilleure_cle_absolue, meilleur_texte
+        if i >= burn_in:
+            # Les listes ne peuvent pas être des clés de dictionnaire, on convertit en tuple
+            cle_tuple = tuple(cle_courante)
+            frequences_visites[cle_tuple] = frequences_visites.get(cle_tuple, 0) + 1
+            
+    top_cles_tuples = sorted(frequences_visites.items(), key=lambda x: x[1], reverse=True)
+    # Reconversion des tuples en listes pour la propreté du code
+    top_cles = [(list(cle), visites) for cle, visites in top_cles_tuples]
+    
+    return top_cles
