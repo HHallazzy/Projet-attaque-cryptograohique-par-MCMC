@@ -1,20 +1,29 @@
+"""
+Module dédié au chiffrement par substitution mono-alphabétique.
+Gère la génération, l'application et l'inversion des clés cryptographiques.
+Fournit également l'opérateur de mutation (voisinage) indispensable à la chaîne 
+de Markov (MCMC), ainsi qu'une interface d'attaque fréquentielle interactive.
+"""
+
 import random
 import json
 import os
 from collections import Counter
 from wiki_statistiques import obtenir_texte_reference
 
-# On utilise ici un alphabet strict de 26 lettres car le sujet précise 
-# que l'espace est conservé tel quel (il n'est pas permuté).
+# L'espace cryptographique est strictement limité aux 26 lettres majuscules.
+# Conformément au cahier des charges, les espaces sont préservés et exclus de la permutation.
 ALPHABET_26 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-# Ordre d'apparition par défaut (au cas où le fichier JSON de la partie 1.2 manque)
+# Distribution statistique théorique de la langue française (Ordre décroissant de fréquence)
+# Utilisée comme solution de repli (Fallback) si le modèle JSON de la partie 1.2 est inaccessible.
 ORDRE_FREQ_FR = "EAISTNRULODMPCVQGBFJHZXYKW"
 
 def generer_cle() -> str:
     """
     Tiret 1 (Partie 1) : Définir une clé de chiffrement.
-    Génère une permutation aléatoire des 26 lettres de l'alphabet.
+    Génère une clé en créant une permutation aléatoire uniforme de l'alphabet standard.
+    L'espace des clés possibles est de 26! (environ 4.03 x 10^26).
     """
     lettres = list(ALPHABET_26)
     random.shuffle(lettres)
@@ -22,28 +31,32 @@ def generer_cle() -> str:
 
 def muter_substitution(cle_actuelle: str) -> str:
     """
-    Génère une clé voisine par transposition de deux lettres.
-    Le tirage des deux positions se fait selon une loi uniforme.
+    Génère un état voisin pour l'algorithme Metropolis-Hastings (MCMC).
+    La mutation consiste en une simple transposition (échange) de deux lettres choisies 
+    selon une loi de probabilité uniforme, garantissant la réversibilité de la chaîne de Markov.
     """
     cle_liste = list(cle_actuelle)
-    # Tirage de 2 indices distincts entre 0 et 25 (loi uniforme)
+    
+    # Échantillonnage sans remise de 2 indices distincts
     i, j = random.sample(range(26), 2)
-    # Échange (transposition)
+    
+    # Transposition des deux éléments (Swap O(1))
     cle_liste[i], cle_liste[j] = cle_liste[j], cle_liste[i]
+    
     return "".join(cle_liste)
 
 def verifier_cle(cle: str) -> bool:
     """
     Tiret 1 (Partie 2) : Vérifier une clé de chiffrement.
-    Contrôle que la clé fait bien 26 caractères et contient 
-    exactement une fois chaque lettre de l'alphabet.
+    Valide l'intégrité structurelle de la clé (bijection parfaite avec l'alphabet).
     """
     if len(cle) != 26:
-        print("Erreur : La clé doit contenir exactement 26 caractères.")
+        print("[ERREUR] La clé doit contenir exactement 26 caractères.")
         return False
         
+    # L'utilisation d'un Set (Ensemble) permet de vérifier l'absence de doublons en O(N)
     if set(cle) != set(ALPHABET_26):
-        print("Erreur : La clé contient des doublons ou des caractères non autorisés.")
+        print("[ERREUR] La clé contient des doublons ou des caractères non autorisés.")
         return False
         
     return True
@@ -51,37 +64,37 @@ def verifier_cle(cle: str) -> bool:
 def chiffrer_texte(texte_clair: str, cle: str) -> str:
     """
     Tiret 2 : Appliquer la clé à un texte clair pour obtenir un cryptogramme.
-    Remplace chaque lettre selon la permutation de la clé, en ignorant les espaces.
+    Utilise la méthode optimisée en C de Python (str.maketrans et translate) 
+    pour un traitement de complexité O(L) où L est la longueur du texte.
     """
     table_substitution = str.maketrans(ALPHABET_26, cle)
-    texte_chiffre = texte_clair.translate(table_substitution)
-    return texte_chiffre
+    return texte_clair.translate(table_substitution)
 
 def inverser_cle(cle: str) -> str:
     """
     Tiret 3 : Construire l'inverse de cette clé quand elle est connue.
-    Permet de retrouver la permutation exacte pour le déchiffrement.
+    Calcule la permutation inverse K^(-1) telle que E(D(Texte, K), K^(-1)) = Texte.
     """
-    cle_inverse = "".join(ALPHABET_26[cle.index(lettre)] for lettre in ALPHABET_26)
-    return cle_inverse
+    # Pour chaque lettre de l'alphabet standard, on cherche sa position dans la clé chiffrée
+    return "".join(ALPHABET_26[cle.index(lettre)] for lettre in ALPHABET_26)
 
 def dechiffrer_texte(cryptogramme: str, cle: str) -> str:
     """
     Tiret 4 : Déchiffrer un texte chiffré avec une clé connue.
+    Applique la table de traduction générée par l'inversion de la clé.
     """
     cle_inverse = inverser_cle(cle)
     table_substitution = str.maketrans(ALPHABET_26, cle_inverse)
-    texte_dechiffre = cryptogramme.translate(table_substitution)
-    return texte_dechiffre
+    return cryptogramme.translate(table_substitution)
 
 # ==========================================
-# ATTAQUE SEQUENTIELLE INTERACTIVE (Saisie Manuelle)
+# ATTAQUE SÉQUENTIELLE INTERACTIVE (Section 1.3)
 # ==========================================
 
 def appliquer_traduction_partielle(cryptogramme: str, cle_trouvee: dict) -> str:
     """
-    Applique les correspondances validées au texte.
-    Affiche des '_' pour les lettres non encore décodées.
+    Applique un masque de déchiffrement partiel sur le cryptogramme.
+    Les caractères dont la substitution est inconnue sont masqués par un underscore '_'.
     """
     resultat = ""
     for char in cryptogramme:
@@ -96,10 +109,10 @@ def appliquer_traduction_partielle(cryptogramme: str, cle_trouvee: dict) -> str:
 def attaque_frequentielle(cryptogramme: str) -> str:
     """
     Tiret 5 : Développer une attaque fréquentielle (Section 1.3).
-    Mode interactif manuel : Affiche les statistiques et laisse l'utilisateur
-    saisir ses propres choix avec des contrôles de sécurité.
+    Processus interactif assisté : le système propose des substitutions basées sur 
+    l'analyse de fréquence (unigrammes), et l'utilisateur valide ou rejette les choix.
     """
-    # 1. Chargement des statistiques
+    # 1. Chargement de la distribution statistique (Modèle d'entraînement)
     chemin_stats = "data/stats_reference.json"
     ordre_reference = list(ORDRE_FREQ_FR) 
     
@@ -109,35 +122,38 @@ def attaque_frequentielle(cryptogramme: str) -> str:
                 stats = json.load(fichier)
                 if 'ordre_lettres' in stats:
                     ordre_reference = stats['ordre_lettres']
-                    print(f"[INFO] Stats de la base de données chargées avec succès !")
+                    print("[INFO] Statistiques de la base de données chargées avec succès.")
         except Exception:
-            print("[ATTENTION] Erreur de lecture du JSON. Utilisation des stats par défaut.")
+            print("[ATTENTION] Erreur de lecture du JSON. Bascule sur la distribution théorique par défaut.")
     else:
-        print("[ATTENTION] Fichier JSON introuvable. Utilisation des stats par défaut.")
+        print("[ATTENTION] Modèle JSON introuvable. Bascule sur la distribution théorique par défaut.")
 
-    # 2. Analyse des fréquences du cryptogramme
+    # 2. Extraction des fréquences d'apparition dans le texte chiffré
     lettres_chiffrees = cryptogramme.replace(" ", "")
     compteur = Counter(lettres_chiffrees)
+    
+    # Tri décroissant des lettres selon leur occurrence
     lettres_triees = [lettre for lettre, freq in compteur.most_common()]
     
-    cle_trouvee = {} # Dictionnaire des validations (ex: {X->E, Y->T})
+    # Dictionnaire de correspondance validée par l'utilisateur (ex: {'X': 'E'})
+    cle_trouvee = {}
     
     print("\n" + "="*50)
     print(" DÉBUT DE L'ATTAQUE INTERACTIVE (MODE MANUEL)")
     print("="*50)
     
-    # 3. Boucle d'analyse pour chaque lettre chiffrée
+    # 3. Résolution itérative guidée par l'utilisateur
     for lettre_chif in lettres_triees:
         valide = False
         
         while not valide:
-            # On calcule les lettres claires qui n'ont pas encore été utilisées
+            # Identification de l'espace des lettres claires non encore assignées
             lettres_disponibles = [L for L in ordre_reference if L not in cle_trouvee.values()]
             
             if not lettres_disponibles:
-                break # L'alphabet complet a été trouvé
+                break
                 
-            # Affichage de l'aperçu du texte (limité à 300 caractères pour la lisibilité)
+            # Génération de l'aperçu textuel contextuel (Tronqué à 300 caractères)
             apercu = ""
             for char in cryptogramme[:300]:
                 if char == " ":
@@ -145,39 +161,37 @@ def attaque_frequentielle(cryptogramme: str) -> str:
                 elif char in cle_trouvee:
                     apercu += cle_trouvee[char]
                 elif char == lettre_chif:
-                    apercu += "[?]" # Mise en évidence de la lettre en cours de traitement
+                    apercu += "[?]" # Focalisation visuelle sur le caractère en cours d'analyse
                 else:
                     apercu += "_"
                     
             print(f"\n[APERÇU] : {apercu}")
             print(f"La lettre chiffrée '{lettre_chif}' est apparue {compteur[lettre_chif]} fois.")
-            
-            # Affichage de l'aide à la décision
             print(f"-> Déjà validé : {', '.join(f'{k}->{v}' for k, v in cle_trouvee.items())}")
-            print(f"-> Lettres dispo (par ordre de proba) : {', '.join(lettres_disponibles)}")
+            print(f"-> Lettres dispo (par ordre de probabilité) : {', '.join(lettres_disponibles)}")
             
-            # Saisie utilisateur sécurisée : utilisation de 1 et 2 pour éviter le conflit avec les lettres
-            choix = input(f"Saisissez la lettre claire (1 = Passer, 2 = Quitter) : ").strip().upper()
+            # Saisie sécurisée des instructions utilisateur
+            choix = input("Saisissez la lettre claire (1 = Passer, 2 = Quitter) : ").strip().upper()
             
             if choix == '2':
-                print("\n[INFO] Arrêt de l'analyse interactive.")
+                print("\n[INFO] Interruption de l'analyse interactive par l'utilisateur.")
                 return appliquer_traduction_partielle(cryptogramme, cle_trouvee)
                 
-            elif choix == '1' or choix == '': # On accepte aussi la touche "Entrée" vide pour passer vite
-                print(f"[INFO] Vous avez passé la lettre '{lettre_chif}'.")
-                break # On sort du while pour passer à la lettre chiffrée suivante
+            elif choix == '1' or choix == '':
+                print(f"[INFO] Analyse de la lettre '{lettre_chif}' différée.")
+                break 
                 
-            # Vérifications de sécurité de la saisie
+            # Validation de l'intégrité de la saisie (Protection contre les erreurs de frappe)
             elif len(choix) != 1 or choix not in ALPHABET_26:
-                print("[ERREUR] Saisie invalide. Veuillez entrer UNE seule lettre de A à Z (ou 1 / 2).")
+                print("[ERREUR] Entrée non valide. Saisissez une unique lettre de A à Z.")
                 
             elif choix in cle_trouvee.values():
-                print(f"[ERREUR] Vous avez déjà utilisé la lettre '{choix}' ! Choisissez-en une autre.")
+                print(f"[ERREUR] La lettre '{choix}' est déjà assignée dans la clé partielle.")
                 
             else:
                 cle_trouvee[lettre_chif] = choix
                 valide = True
-                print(f"[SUCCÈS] '{lettre_chif}' est maintenant remplacé par '{choix}'.")
+                print(f"[SUCCÈS] Mappage enregistré : '{lettre_chif}' -> '{choix}'.")
                 
     print("\n" + "="*50)
     print(" FIN DE L'ATTAQUE INTERACTIVE")
@@ -185,24 +199,24 @@ def attaque_frequentielle(cryptogramme: str) -> str:
     return appliquer_traduction_partielle(cryptogramme, cle_trouvee)
 
 # ==========================================
-# EXECUTION TEST
+# MODULE DE TEST UNITAIRE
 # ==========================================
 if __name__ == "__main__":
-    print("Test des outils de substitution (Section 1.3)")
+    print("Test d'intégration des outils de substitution (Section 1.3)")
     
     ma_cle = generer_cle()
     
     if verifier_cle(ma_cle):
-        print("\n--- Récupération d'un texte pour l'attaque ---")
+        print("\n--- Récupération d'un corpus de texte pour le banc d'essai ---")
         texte_wiki = obtenir_texte_reference("Chiffre_de_Vigenère")
         
         if texte_wiki:
             texte_test = texte_wiki[:2000]
             cryptogramme_test = chiffrer_texte(texte_test, ma_cle)
             
-            print(f"\nCryptogramme généré ({len(cryptogramme_test)} caractères).")
-            print("Lancement de l'assistant de cryptanalyse...")
+            print(f"\nCryptogramme cible généré ({len(cryptogramme_test)} caractères).")
+            print("Initialisation de l'assistant de cryptanalyse fréquentielle...")
             
             texte_craque = attaque_frequentielle(cryptogramme_test)
             
-            print(f"\nRésultat final de votre attaque :\n{texte_craque[:500]}...")
+            print(f"\nRésultat final restitué :\n{texte_craque[:500]}...")

@@ -1,0 +1,4 @@
+# Dépendances pour le projet de Cryptanalyse MCMC - IUT d'Amiens
+
+# Requis pour le traceur de convergence en temps réel (interface_complete.py)
+matplotlib>=3.5.0
