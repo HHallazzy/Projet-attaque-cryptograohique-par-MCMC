@@ -13,17 +13,13 @@ from attaque_mcmc import attaque_mcmc_substitution, attaque_mcmc_permutation
 from wiki_statistiques import obtenir_texte_reference
 
 def selectionner_langue() -> str:
-    """
-    Scanne le dossier 'data' pour trouver les langues disponibles.
-    Force l'utilisateur à faire un choix valide via une boucle de sécurité.
-    """
+    """Scanne le dossier 'data' pour trouver les langues disponibles."""
     dossier_data = 'data'
     if not os.path.exists(dossier_data):
         print("[ERREUR] Le dossier 'data' est introuvable. Lancez 'wiki_statistiques.py' en premier.")
         return None
         
-    # Liste uniquement les sous-dossiers (ex: fr, en, es)
-    langues = [d for d in os.listdir(dossier_data) if os.path.isdir(os.path.join(dossier_data, d))]
+    langues = sorted([d for d in os.listdir(dossier_data) if os.path.isdir(os.path.join(dossier_data, d))])
     
     if not langues:
         print("[ERREUR] Aucune langue trouvée dans le dossier 'data'.")
@@ -35,7 +31,6 @@ def selectionner_langue() -> str:
     for i, lang in enumerate(langues, 1):
         print(f"{i}. {lang.upper()}")
         
-    # Boucle de validation de saisie (empêche les plantages si l'utilisateur tape des lettres)
     while True:
         choix = input(f"Choisissez une langue (1-{len(langues)}) : ").strip()
         if choix.isdigit() and 1 <= int(choix) <= len(langues):
@@ -43,10 +38,7 @@ def selectionner_langue() -> str:
         print(f"[ERREUR] Saisie invalide. Veuillez entrer un nombre entre 1 et {len(langues)}.")
 
 def charger_texte_cible(langue: str) -> str:
-    """
-    Pioche un fichier texte au hasard dans le dossier de la langue sélectionnée.
-    Sert de choix principal (option 1) ou de solution de secours (échec option 2).
-    """
+    """Pioche un fichier texte au hasard dans le dossier de la langue sélectionnée."""
     dossier_langue = os.path.join('data', langue)
     fichiers = [f for f in os.listdir(dossier_langue) if f.endswith('.txt')]
     
@@ -60,44 +52,93 @@ def charger_texte_cible(langue: str) -> str:
     with open(os.path.join(dossier_langue, fichier_choisi), 'r', encoding='utf-8') as f:
         return f.read()
 
-def choisir_source_texte(langue: str) -> str:
+def choisir_fichier_local(langue: str) -> str:
     """
-    Demande à l'utilisateur l'origine du texte à attaquer.
-    Intègre une boucle de sécurité pour forcer un choix '1' ou '2'.
+    Affiche une liste paginée (10 par page) des fichiers locaux disponibles 
+    pour éviter de surcharger la console s'il y a des centaines de textes.
     """
-    print("\n--- SOURCE DU TEXTE À ATTAQUER ---")
-    print("1. Tirer un texte au hasard dans la base de données locale")
-    print("2. Fournir une page Wikipédia précise (Titre ou URL complète)")
+    dossier_langue = os.path.join('data', langue)
+    fichiers = sorted([f for f in os.listdir(dossier_langue) if f.endswith('.txt')])
     
-    # Validation stricte du choix utilisateur
+    if not fichiers:
+        print(f"[ERREUR] Aucun fichier texte trouvé pour la langue {langue.upper()}.")
+        return None
+        
+    page = 0
+    limite = 10
+    total_pages = max(1, (len(fichiers) - 1) // limite + 1)
+    
     while True:
-        choix = input("Votre choix (1/2) : ").strip()
-        if choix in ["1", "2"]:
-            break
-        print("[ERREUR] Veuillez taper '1' ou '2'.")
-    
-    if choix == "2":
-        saisie = input("\nEntrez le titre de la page ou l'URL : ").strip()
+        print(f"\n--- FICHIERS DISPONIBLES ({langue.upper()}) - Page {page+1}/{total_pages} ---")
+        debut = page * limite
+        fichiers_page = fichiers[debut:debut+limite]
         
-        # Astuce technique : Si le prof entre une URL complète, on extrait juste le titre à la fin
-        if "wikipedia.org/wiki/" in saisie:
-            saisie = urllib.parse.unquote(saisie.split("wikipedia.org/wiki/")[-1])
+        for i, fichier in enumerate(fichiers_page, 1):
+            print(f"{i}. {fichier}")
             
-        print(f"\n[INFO] Préparation de la page Wikipédia : {saisie}")
-        texte = obtenir_texte_reference(saisie, lang=langue)
+        print("-" * 60)
+        instructions = f"Entrez un numéro (1-{len(fichiers_page)})"
+        if total_pages > 1:
+            if page > 0: instructions += ", 'P' (Précédent)"
+            if page < total_pages - 1: instructions += ", 'S' (Suivant)"
+        instructions += ", ou 'R' (Retour au menu)"
         
-        if texte:
-            return texte
-        print("[ATTENTION] Impossible de télécharger la page. Bascule sur un texte aléatoire local...")
+        choix = input(f"{instructions} : ").strip().upper()
         
-    # Par défaut (choix 1) ou si le téléchargement a échoué (choix 2)
-    return charger_texte_cible(langue)
+        if choix == 'R':
+            return None # Retourne au menu de sélection de source
+        elif choix == 'S' and page < total_pages - 1:
+            page += 1
+        elif choix == 'P' and page > 0:
+            page -= 1
+        elif choix.isdigit():
+            idx = int(choix)
+            if 1 <= idx <= len(fichiers_page):
+                fichier_choisi = fichiers_page[idx - 1]
+                print(f"\n[INFO] Fichier source sélectionné : {fichier_choisi}")
+                with open(os.path.join(dossier_langue, fichier_choisi), 'r', encoding='utf-8') as f:
+                    return f.read()
+        else:
+            print("[ERREUR] Saisie invalide.")
+
+def choisir_source_texte(langue: str) -> str:
+    """Demande à l'utilisateur l'origine du texte à attaquer avec la nouvelle option locale."""
+    while True:
+        print("\n--- SOURCE DU TEXTE À ATTAQUER ---")
+        print("1. Tirer un texte au hasard dans la base de données locale")
+        print("2. Fournir une page Wikipédia précise (Titre ou URL complète)")
+        print("3. Choisir un texte spécifique dans la base locale (Liste)")
+        
+        choix = input("Votre choix (1/2/3) : ").strip()
+        
+        if choix == "1":
+            return charger_texte_cible(langue)
+            
+        elif choix == "2":
+            saisie = input("\nEntrez le titre de la page ou l'URL : ").strip()
+            if "wikipedia.org/wiki/" in saisie:
+                saisie = urllib.parse.unquote(saisie.split("wikipedia.org/wiki/")[-1])
+                
+            print(f"\n[INFO] Préparation de la page Wikipédia : {saisie}")
+            texte = obtenir_texte_reference(saisie, lang=langue)
+            
+            if texte:
+                return texte
+            print("[ATTENTION] Impossible de télécharger. Bascule sur un texte aléatoire...")
+            return charger_texte_cible(langue)
+            
+        elif choix == "3":
+            texte = choisir_fichier_local(langue)
+            if texte:
+                return texte
+            # Si choisir_fichier_local retourne None (l'utilisateur a tapé 'R'), 
+            # la boucle while recommence et réaffiche le menu de source.
+            
+        else:
+            print("[ERREUR] Veuillez taper '1', '2' ou '3'.")
 
 def selectionner_ngram() -> int:
-    """
-    Demande le niveau de précision statistique (Digrammes ou Trigrammes).
-    Garantit une saisie valide via une boucle infinie.
-    """
+    """Demande le niveau de précision statistique (Digrammes ou Trigrammes)."""
     print("\n--- NIVEAU D'ANALYSE (RÉSOLUTION DES ANAGRAMMES) ---")
     print("1. Digrammes (Blocs de 2 lettres) : Rapide, adapté aux textes très longs.")
     print("2. Trigrammes (Blocs de 3 lettres) : Plus lourd, mais ultra-précis (évite les maximums locaux).")
@@ -111,28 +152,21 @@ def selectionner_ngram() -> int:
         print("[ERREUR] Veuillez taper '1' ou '2'.")
 
 def main():
-    # ==========================================
-    # 1. INITIALISATION DE L'ENVIRONNEMENT
-    # ==========================================
     langue = selectionner_langue()
     if not langue:
-        return # Arrêt propre si aucune langue n'est configurée
+        return
 
     chemin_stats = os.path.join('data', langue, 'stats_reference.json')
     if not os.path.exists(chemin_stats):
         print(f"[ERREUR] Le fichier de statistiques {chemin_stats} est introuvable.")
         return
         
-    # Chargement des matrices de probabilités en mémoire
     with open(chemin_stats, 'r', encoding='utf-8') as f:
         fichier_complet = json.load(f)
         stats_dig = fichier_complet.get("digrammes", {})
         stats_tri = fichier_complet.get("trigrammes", {})
 
-    # ==========================================
-    # 2. MENU PRINCIPAL DE L'APPLICATION
-    # ==========================================
-    while True: # La boucle permet de relancer des attaques sans relancer le script
+    while True:
         print("\n" + "="*60)
         print(f"   OUTIL D'ATTAQUE MCMC - Mode : {langue.upper()}")
         print("="*60)
@@ -147,15 +181,12 @@ def main():
             break
             
         elif choix in ["1", "2"]:
-            # --- 2.1 Configuration de l'attaque ---
             texte_complet = choisir_source_texte(langue)
             if not texte_complet:
                 print("[ERREUR] Impossible de charger un texte de référence. Retour au menu.")
                 continue
                 
-            # Limitation à 2500 caractères pour garder des temps de calcul décents en MCMC
             texte_clair = texte_complet[:2500] 
-            
             n_gram = selectionner_ngram()
             stats_actives = stats_tri if n_gram == 3 else stats_dig
 
@@ -164,11 +195,7 @@ def main():
             if not iterations_str.isdigit():
                 print(f"[INFO] Valeur par défaut appliquée : {iterations} itérations.")
 
-            # ==========================================
-            # 3. EXÉCUTION DE L'ATTAQUE CIBLÉE
-            # ==========================================
             if choix == "1":
-                # --- ATTAQUE PAR SUBSTITUTION ---
                 cle_secrete = substitution.generer_cle()
                 cryptogramme = substitution.chiffrer_texte(texte_clair, cle_secrete)
                 
@@ -176,10 +203,8 @@ def main():
                 print(f"[>] Lancement de l'attaque MCMC (N={n_gram}) sur {iterations} itérations...")
                 print("[>] Note : Les 15 premiers % (Période de chauffe) seront ignorés des statistiques.")
                 
-                # Appel du module d'échantillonnage de Metropolis-Hastings
                 top_cles = attaque_mcmc_substitution(cryptogramme, iterations, stats_actives, n_gram)
                 
-                # --- AFFICHAGE DES RÉSULTATS ---
                 print("\n" + "="*60)
                 print("--- RÉSULTATS (CLÉS LES PLUS VISITÉES APRÈS CHAUFFE) ---")
                 
@@ -192,8 +217,7 @@ def main():
                     print(f"      Texte déchiffré   : {texte_dechiffre[:120]}...")
 
             elif choix == "2":
-                # --- ATTAQUE PAR PERMUTATION ---
-                taille_bloc = 10 # Standard de l'exercice
+                taille_bloc = 10
                 cle_secrete = permutation.generer_cle(taille_bloc)
                 cryptogramme = permutation.chiffrer_permutation(texte_clair, cle_secrete)
                 
@@ -201,10 +225,8 @@ def main():
                 print(f"[>] Lancement de l'attaque MCMC (N={n_gram}) sur {iterations} itérations...")
                 print("[>] Note : Les 15 premiers % (Période de chauffe) seront ignorés des statistiques.")
                 
-                # Appel du module d'échantillonnage de Metropolis-Hastings
                 top_cles = attaque_mcmc_permutation(cryptogramme, iterations, stats_actives, taille_bloc, n_gram)
                 
-                # --- AFFICHAGE DES RÉSULTATS ---
                 print("\n" + "="*60)
                 print("--- RÉSULTATS (CLÉS LES PLUS VISITÉES APRÈS CHAUFFE) ---")
                 
