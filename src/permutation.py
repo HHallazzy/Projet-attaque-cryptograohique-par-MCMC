@@ -5,7 +5,9 @@ def generer_cle(n: int) -> list[int]:
     Génère une clé de permutation aléatoire de taille n.
     Utile pour générer des clés de départ pour l'algorithme MCMC (Partie 1.5).
     """
+    # Crée une liste ordonnée de 0 à n-1 (ex: [0, 1, 2, 3])
     cle = list(range(n))
+    # Mélange la liste sur place pour créer la permutation aléatoire
     random.shuffle(cle)
     return cle
 
@@ -23,17 +25,21 @@ def muter_permutation(cle_actuelle: list[int]) -> list[int]:
     # 1. Choisir aléatoirement la taille du bloc à déplacer (entre 1 et n-1 éléments)
     taille_bloc = random.randint(1, n - 1)
     
-    # 2. Choisir l'index de départ du bloc
+    # 2. Choisir l'index de départ du bloc (pour ne pas déborder de la liste)
     index_depart = random.randint(0, n - taille_bloc)
     
-    # 3. Extraire le bloc et le supprimer de la liste
+    # LIGNE COMPLEXE (Extraction et suppression) :
+    # 3. On copie le sous-segment dans 'bloc', puis on utilise 'del' avec le slicing [:] 
+    # pour effacer ce segment de la liste d'origine. La liste se rétracte automatiquement.
     bloc = nouvelle_cle[index_depart : index_depart + taille_bloc]
     del nouvelle_cle[index_depart : index_depart + taille_bloc]
     
     # 4. Choisir une nouvelle position d'insertion dans la liste restante
     index_insertion = random.randint(0, len(nouvelle_cle))
     
-    # 5. Réinsérer le bloc à sa nouvelle place
+    # LIGNE COMPLEXE (Réinsertion astucieuse) :
+    # 5. En Python, affecter une liste à un slice vide [i:i] insère les éléments 
+    # à cet index précis en décalant le reste vers la droite, sans rien écraser.
     nouvelle_cle[index_insertion:index_insertion] = bloc
     
     return nouvelle_cle
@@ -44,6 +50,8 @@ def verifier_cle(cle: list[int]) -> bool:
     Exemple valide pour une taille de 4 : [3, 0, 2, 1].
     """
     n = len(cle)
+    # L'utilisation de set() élimine les doublons. Si la taille et le contenu 
+    # correspondent exactement à une suite mathématique parfaite (range), la clé est valide.
     return set(cle) == set(range(n))
 
 def chiffrer_permutation(texte: str, cle: list[int]) -> str:
@@ -53,23 +61,30 @@ def chiffrer_permutation(texte: str, cle: list[int]) -> str:
     """
     n = len(cle)
     
-    # Le texte doit être un multiple de la taille de la clé
+    # LIGNE COMPLEXE (Le Padding / Remplissage) :
+    # Le texte doit être un multiple exact de la taille de la clé.
+    # L'opérateur modulo (%) trouve le reste de la division. S'il manque des cases,
+    # on ajoute le nombre exact d'espaces nécessaires à la fin du texte.
     restant = len(texte) % n
     if restant != 0:
         texte += " " * (n - restant)
         
     resultat = []
     
-    # Découpage et traitement par blocs
+    # Découpage du texte avec un pas de 'n' (traitement bloc par bloc)
     for i in range(0, len(texte), n):
         bloc_clair = texte[i:i+n]
+        
+        # On pré-alloue une liste vide de la bonne taille pour accueillir les lettres mélangées
         bloc_chiffre = [''] * n
         
-        # On place chaque caractère à sa nouvelle position
+        # On place chaque caractère à sa nouvelle position dictée par la clé
         for pos_initiale, char in enumerate(bloc_clair):
             nouvelle_pos = cle[pos_initiale]
             bloc_chiffre[nouvelle_pos] = char
             
+        # extend() ajoute le contenu de la liste à notre résultat global, contrairement à append() 
+        # qui ajouterait la liste elle-même (créant des listes imbriquées).
         resultat.extend(bloc_chiffre)
         
     return "".join(resultat)
@@ -80,8 +95,11 @@ def inverser_cle(cle: list[int]) -> list[int]:
     la clé inverse dira que l'index 3 retourne à la position 0.
     """
     n = len(cle)
+    # On prépare une liste pleine de zéros de la même taille
     cle_inverse = [0] * n
     
+    # La logique est inversée : la position d'arrivée ('pos_cible') de la clé d'origine 
+    # devient l'index de notre nouvelle clé, et on y stocke la position de départ.
     for pos_initiale, pos_cible in enumerate(cle):
         cle_inverse[pos_cible] = pos_initiale
         
@@ -91,6 +109,8 @@ def dechiffrer_permutation(cryptogramme: str, cle: list[int]) -> str:
     """
     Déchiffre le texte en appliquant la clé inverse.
     """
+    # C'est la beauté mathématique de la permutation : déchiffrer, 
+    # c'est simplement chiffrer à nouveau mais avec le chemin de retour.
     cle_inverse = inverser_cle(cle)
     return chiffrer_permutation(cryptogramme, cle_inverse)
 
