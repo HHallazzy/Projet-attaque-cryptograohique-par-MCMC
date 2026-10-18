@@ -1,8 +1,6 @@
 """
-Module d'Ingestion et de Modélisation Statistique.
-Ce script génère les matrices de probabilités de référence utilisées par l'algorithme MCMC.
-Il aspire des textes (via l'API Wikipédia), les normalise pour l'espace cryptographique (27 caractères),
-et calcule les occurrences des N-grammes (Digrammes et Trigrammes) par langue.
+Module d'Ingestion et de Modélisation Statistique (Mode Massif).
+Génère une matrice ultra-précise en ingérant 20 articles majeurs par langue.
 """
 
 import urllib.request
@@ -11,177 +9,179 @@ import json
 import unicodedata
 import re
 import os
+import time
 from collections import Counter
 
 def recuperer_texte_wikipedia(titre_page: str, lang: str = 'fr') -> str:
-    """
-    Interroge l'API officielle de Wikipédia pour extraire le texte brut d'un article.
-    Utilise un User-Agent personnalisé pour respecter les conditions d'utilisation de l'API.
-    """
+    """Récupère le texte brut d'une page Wikipédia via son API."""
     titre_encode = urllib.parse.quote(titre_page)
-    # L'API est configurée pour retourner uniquement le texte pur (explaintext=1), sans HTML ni balises wiki
     url = f"https://{lang}.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles={titre_encode}&format=json"
     
     requete = urllib.request.Request(
         url,
-        headers={'User-Agent': 'ProjetMCMC/1.0'}
+        headers={'User-Agent': 'ProjetMCMC/2.0'}
     )
     
     try:
         with urllib.request.urlopen(requete) as response:
             data = json.loads(response.read().decode('utf-8'))
             pages = data['query']['pages']
-            
-            # Parcours du JSON pour extraire le contenu de la page retournée
             for page_id in pages:
+                # L'API utilise l'identifiant -1 pour signaler qu'aucune page
+                # correspondant au titre demandé n'a été trouvée.
                 if page_id == '-1':
-                    print(f"[ERREUR] La page '{titre_page}' est introuvable ({lang}).")
+                    print(f"[ERREUR] Page '{titre_page}' introuvable ({lang}).")
                     return ""
                 return pages[page_id]['extract']
     except Exception as e:
-        print(f"[ERREUR] Échec de la connexion à Wikipédia : {e}")
+        print(f"[ERREUR] Connexion à Wikipédia : {e}")
         return ""
 
 def nettoyer_texte(texte: str) -> str:
-    """
-    Normalise le texte pour le restreindre à l'alphabet cryptographique ciblé (A-Z + Espace).
-    Retire les accents, la ponctuation, les chiffres et les sauts de ligne.
-    """
-    # Décomposition Unicode (NFD) pour séparer les caractères de leurs accents (ex: 'é' devient 'e' + '´')
+    """Normalise le texte pour ne conserver que les lettres et les espaces."""
+    # La décomposition Unicode sépare les lettres de leurs accents ; les
+    # caractères de catégorie « Mn » correspondent ensuite aux accents.
     texte_sans_accents = ''.join(c for c in unicodedata.normalize('NFD', texte) if unicodedata.category(c) != 'Mn')
     texte_maj = texte_sans_accents.upper()
-    
-    # Remplacement des sauts de ligne et tabulations par des espaces simples
     texte_espaces = re.sub(r'[\n\t]', ' ', texte_maj)
-    
-    # Suppression stricte de tout caractère n'appartenant pas à [A-Z] ou à l'espace
+    # Les espaces sont conservés car ils participent aux statistiques
+    # d'occurrences et aux n-grammes du modèle linguistique.
     texte_filtre = re.sub(r'[^A-Z ]', '', texte_espaces)
-    
-    # Réduction des espaces multiples consécutifs en un seul espace pour ne pas fausser les probabilités
     return re.sub(r' +', ' ', texte_filtre).strip()
 
 def obtenir_texte_reference(titre_page: str, lang: str = 'fr') -> str:
-    """
-    Gestionnaire de cache local. Vérifie si le texte de la page a déjà été téléchargé
-    et nettoyé auparavant pour éviter des requêtes réseau redondantes (Gain de temps O(1)).
-    """
+    """Retourne le texte nettoyé depuis le cache ou depuis Wikipédia."""
     nom_fichier = titre_page.replace(" ", "_").lower()
     chemin_cache = f"data/{lang}/wiki_{nom_fichier}.txt"
     
-    # Création de l'arborescence si la langue n'a jamais été traitée
     dossier_cache = os.path.dirname(chemin_cache)
     if dossier_cache and not os.path.exists(dossier_cache):
         os.makedirs(dossier_cache)
 
-    # Retour depuis le cache local (Lecture rapide)
     if os.path.exists(chemin_cache):
         with open(chemin_cache, 'r', encoding='utf-8') as fichier:
             return fichier.read()
     
-    # Si non présent en cache, téléchargement, nettoyage et sauvegarde (Mise en cache)
     texte_brut = recuperer_texte_wikipedia(titre_page, lang)
     if not texte_brut: return ""
         
+    # Le texte nettoyé est mis en cache afin d'éviter de refaire une requête
+    # réseau lors des exécutions suivantes.
     texte_propre = nettoyer_texte(texte_brut)
     with open(chemin_cache, 'w', encoding='utf-8') as fichier:
         fichier.write(texte_propre)
-        
     return texte_propre
 
 def calculer_statistiques(texte: str) -> dict:
-    """
-    Calcule les probabilités unigrammes (fréquence d'apparition de chaque lettre).
-    Base statistique fondamentale sur l'alphabet de 27 caractères.
-    """
+    """Calcule les occurrences et fréquences des lettres et des espaces."""
     compteur = Counter(texte)
     total_caracteres = len(texte)
     resultats = {'total': total_caracteres, 'occurrences': {}, 'frequences': {}}
-    
     for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ ":
         nb = compteur.get(char, 0)
+        # Une fréquence n'est calculée que si le texte contient au moins un
+        # caractère, afin d'éviter une division par zéro.
         resultats['occurrences'][char] = nb
         resultats['frequences'][char] = (nb / total_caracteres * 100) if total_caracteres > 0 else 0
-        
     return resultats
 
 def calculer_statistiques_ngrams(texte: str, n: int) -> dict:
-    """
-    Extrait les fréquences absolues des N-grammes via une approche par fenêtre glissante.
-    Utilisé pour générer les matrices de Digrammes (n=2) et Trigrammes (n=3).
-    """
-    # Création d'une liste de tous les blocs de 'n' caractères consécutifs
+    """Compte les séquences contiguës de ``n`` caractères."""
+    # La borne exclut les fenêtres incomplètes à la fin du texte. Chaque
+    # position de départ produit ainsi un n-gramme de longueur exactement n.
     ngrams = [texte[i:i+n] for i in range(len(texte)-(n-1))]
     compteur = Counter(ngrams)
-    
-    # Filtre de sécurité pour garantir la taille exacte des clés retournées
     return {ngram: count for ngram, count in compteur.items() if len(ngram) == n}
 
 def sauvegarder_statistiques_json(stats_nouvelles: dict, stats_digrammes: dict, stats_trigrammes: dict, titre_source: str, lang: str = 'fr'):
-    """
-    Agrége (fusionne) les nouvelles statistiques avec le modèle global existant pour une langue donnée.
-    Implémente une protection anti-doublon pour éviter le biais statistique d'un texte analysé deux fois.
-    """
+    """Fusionne les statistiques d'une source dans le modèle JSON de la langue."""
     chemin_fichier = f"data/{lang}/stats_reference.json"
     os.makedirs(os.path.dirname(chemin_fichier), exist_ok=True)
         
-    # Structure de base (Modèle vierge)
     stats_globales = {
         'total': 0, 'occurrences': {char: 0 for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ "},
         'frequences': {}, 'ordre_lettres': [], 'sources_traitees': [],
         'digrammes': {}, 'trigrammes': {}
     }
 
-    # Chargement de la matrice existante pour mise à jour cumulative
     if os.path.exists(chemin_fichier):
         try:
             with open(chemin_fichier, 'r', encoding='utf-8') as f:
                 stats_anciennes = json.load(f)
                 stats_globales.update(stats_anciennes)
-        except json.JSONDecodeError: pass
+        except json.JSONDecodeError:
+            # Un fichier vide ou invalide ne doit pas empêcher la régénération
+            # du modèle à partir des statistiques courantes.
+            pass
 
-    # Protection contre le biais : On ignore la source si elle est déjà dans le modèle
+    # Cette vérification rend l'opération idempotente : relancer le script ne
+    # double pas les données d'une source déjà intégrée.
     if titre_source in stats_globales['sources_traitees']: return 
 
-    # Addition des unigrammes
     stats_globales['total'] += stats_nouvelles['total']
     for char, count in stats_nouvelles['occurrences'].items():
         stats_globales['occurrences'][char] += count
         
-    # Addition vectorielle des digrammes
+    # Les n-grammes sont additionnés séparément afin de conserver la fréquence
+    # cumulée d'une même séquence dans plusieurs articles.
     for digramme, count in stats_digrammes.items():
         stats_globales['digrammes'][digramme] = stats_globales['digrammes'].get(digramme, 0) + count
         
-    # Addition vectorielle des trigrammes
     for trigramme, count in stats_trigrammes.items():
         stats_globales['trigrammes'][trigramme] = stats_globales['trigrammes'].get(trigramme, 0) + count
 
-    # Enregistrement de la trace de traitement
     stats_globales['sources_traitees'].append(titre_source)
 
-    # Persistance sur le disque dur
     with open(chemin_fichier, 'w', encoding='utf-8') as f:
         json.dump(stats_globales, f, indent=4)
-        
-    print(f"[SUCCÈS] Statistiques '{lang.upper()}' (Digrammes & Trigrammes) enregistrées (Source: {titre_source}) !")
+    print(f"[SUCCÈS] Statistiques ajoutées au modèle {lang.upper()} (Source: {titre_source})")
 
 if __name__ == "__main__":
-    # Liste initiale d'articles Wikipédia pour entraîner les modèles de base
-    pages_a_traiter = [
-        ("fr", "Chiffre_de_Vigenère"), ("fr", "Cryptographie"), ("fr", "Souris"),
-        ("en", "Cryptography"), ("en", "Computer_science"), ("es", "Criptografía")
-    ]
+    print("="*60)
+    print("   GÉNÉRATION DES MATRICES DE PROBABILITÉS")
+    print("="*60)
     
-    print("="*60)
-    print("   CRÉATION / MISE À JOUR DES MATRICES DE PROBABILITÉS")
-    print("="*60)
+    # L'ensemble des sujets fournit un corpus diversifié pour limiter la
+    # dépendance du modèle à un seul domaine lexical.
+    pages_a_traiter = [
+        # FRANÇAIS (20 nouvelles pages)
+        ("fr", "Europe"), ("fr", "Afrique"), ("fr", "Seconde_Guerre_mondiale"), 
+        ("fr", "Philosophie"), ("fr", "Psychologie"), ("fr", "Biologie"), ("fr", "Chimie"), 
+        ("fr", "Astronomie"), ("fr", "Terre"), ("fr", "Océan"), ("fr", "Économie"), 
+        ("fr", "Politique"), ("fr", "Internet"), ("fr", "Intelligence_artificielle"), 
+        ("fr", "Électricité"), ("fr", "Lumière"), ("fr", "Temps"), ("fr", "Mathématiques"), 
+        ("fr", "Physique_quantique"), ("fr", "Japon"),
+        
+        # ANGLAIS (20 nouvelles pages)
+        ("en", "Europe"), ("en", "Africa"), ("en", "World_War_II"), 
+        ("en", "Philosophy"), ("en", "Psychology"), ("en", "Biology"), ("en", "Chemistry"), 
+        ("en", "Astronomy"), ("en", "Earth"), ("en", "Ocean"), ("en", "Economics"), 
+        ("en", "Politics"), ("en", "Internet"), ("en", "Artificial_intelligence"), 
+        ("en", "Electricity"), ("en", "Light"), ("en", "Time"), ("en", "Geometry"), 
+        ("en", "Quantum_mechanics"), ("en", "Japan"),
+        
+        # ESPAGNOL (20 nouvelles pages)
+        ("es", "Europa"), ("es", "África"), ("es", "Segunda_Guerra_Mundial"), 
+        ("es", "Filosofía"), ("es", "Psicología"), ("es", "Biología"), ("es", "Química"), 
+        ("es", "Astronomía"), ("es", "Tierra"), ("es", "Océano"), ("es", "Economía"), 
+        ("es", "Política"), ("es", "Internet"), ("es", "Inteligencia_artificial"), 
+        ("es", "Electricidad"), ("es", "Luz"), ("es", "Tiempo"), ("es", "Geometría"), 
+        ("es", "Mecánica_cuántica"), ("es", "Japón"),
+        
+        # ITALIEN (Nouvelle langue - 20 pages)
+        ("it", "Europa"), ("it", "Africa"), ("it", "Seconda_guerra_mondiale"), 
+        ("it", "Filosofia"), ("it", "Psicologia"), ("it", "Biologia"), ("it", "Chimica"), 
+        ("it", "Astronomia"), ("it", "Terra"), ("it", "Oceano"), ("it", "Economia"), 
+        ("it", "Politica"), ("it", "Internet"), ("it", "Intelligenza_artificiale"), 
+        ("it", "Elettricità"), ("it", "Luce"), ("it", "Tempo"), ("it", "Matematica"), 
+        ("it", "Meccanica_quantistica"), ("it", "Giappone")
+    ]
     
     for langue, sujet in pages_a_traiter:
         texte_ref = obtenir_texte_reference(sujet, lang=langue)
         if texte_ref:
-            # Extraction des variables aléatoires (1D, 2D, 3D)
             stats = calculer_statistiques(texte_ref)
             stats_dig = calculer_statistiques_ngrams(texte_ref, 2)
             stats_tri = calculer_statistiques_ngrams(texte_ref, 3) 
-            
-            # Injection dans le modèle de la langue correspondante
             sauvegarder_statistiques_json(stats, stats_dig, stats_tri, sujet, lang=langue)
+        time.sleep(5)
