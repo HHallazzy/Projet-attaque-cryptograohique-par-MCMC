@@ -1,9 +1,8 @@
 """
 Interface graphique de l'outil de cryptanalyse par chaîne de Markov Monte-Carlo.
-
-Tkinter gère les interactions avec l'utilisateur, Matplotlib visualise
-l'évolution du score et un thread dédié exécute les calculs afin de ne pas
-bloquer la boucle d'événements de l'interface.
+Tkinter gère les interactions avec l'utilisateur, Matplotlib visualise l'évolution
+du score et un thread dédié exécute les calculs afin de ne pas bloquer la boucle
+d'événements de l'interface.
 """
 
 import sys
@@ -93,29 +92,39 @@ class ApplicationMCMC(tk.Tk):
         
         ttk.Label(frame_gauche, text="2. Type de chiffrement :").pack(anchor=tk.W, pady=(0, 5))
         self.combo_attaque = ttk.Combobox(frame_gauche, state="readonly", 
-                                          values=["Substitution", "Permutation (Blocs de 10)"], font=("Segoe UI", 11))
+                                          values=["Substitution", "Permutation"], font=("Segoe UI", 11))
         self.combo_attaque.current(0)
         self.combo_attaque.pack(fill=tk.X, pady=(0, 20))
+        
+        # Champ dynamique pour la taille des blocs de permutation
+        # Cela permet de répondre à la consigne d'évaluation "Fournis le jour même"
+        ttk.Label(frame_gauche, text="Taille du bloc (si Permutation) :").pack(anchor=tk.W, pady=(0, 5))
+        self.spin_taille_bloc = ttk.Spinbox(frame_gauche, from_=2, to=100, increment=1, font=("Segoe UI", 12))
+        self.spin_taille_bloc.set(10) # Valeur par défaut
+        self.spin_taille_bloc.pack(fill=tk.X, pady=(0, 20))
         
         ttk.Label(frame_gauche, text="3. Précision Mathématique :").pack(anchor=tk.W, pady=(0, 5))
         self.var_ngram = tk.IntVar(value=2)
         ttk.Radiobutton(frame_gauche, text="Digrammes (N=2)", variable=self.var_ngram, value=2).pack(anchor=tk.W, pady=2)
         ttk.Radiobutton(frame_gauche, text="Trigrammes (N=3)", variable=self.var_ngram, value=3).pack(anchor=tk.W, pady=2)
         
+        # Séparation entre Textes Clairs (à chiffrer) et Cryptogrammes (à déchiffrer)
         ttk.Label(frame_gauche, text="\n4. Source de la cible :").pack(anchor=tk.W, pady=(0, 5))
         self.combo_source = ttk.Combobox(frame_gauche, state="readonly", 
                                          values=[
-                                             "Aléatoire (Base locale)", 
-                                             "Parcourir un fichier local (.txt)", 
-                                             "Saisir ou coller un texte",
-                                             "Saisir URL/Titre Wikipédia"
+                                             "Texte Clair : Aléatoire (Local)", 
+                                             "Texte Clair : Fichier (.txt)", 
+                                             "Texte Clair : Coller un texte",
+                                             "Texte Clair : Wikipédia",
+                                             "Cryptogramme : Coller le texte",
+                                             "Cryptogramme : Fichier (.txt)"
                                          ], font=("Segoe UI", 11))
         self.combo_source.current(0)
         self.combo_source.pack(fill=tk.X, pady=(0, 20))
         
         ttk.Label(frame_gauche, text="5. Nombre d'itérations :").pack(anchor=tk.W, pady=(0, 5))
         self.spin_iterations = ttk.Spinbox(frame_gauche, from_=1000, to=100000, increment=1000, font=("Segoe UI", 12))
-        self.spin_iterations.set(10000)
+        self.spin_iterations.set(15000)
         self.spin_iterations.pack(fill=tk.X, pady=(0, 30))
         
         self.btn_lancer = ttk.Button(frame_gauche, text="▶ LANCER L'ATTAQUE", command=self.demarrer_mcmc)
@@ -129,7 +138,8 @@ class ApplicationMCMC(tk.Tk):
         
         police_code = ("Consolas", 14)
         
-        frame_original = ttk.LabelFrame(frame_droit, text="Texte Original (Cible propre)", padding=10)
+        # Le titre s'adapte pour refléter la nature de l'entrée (Clair ou Chiffré)
+        frame_original = ttk.LabelFrame(frame_droit, text="Cible (Texte Clair d'origine ou Cryptogramme fourni)", padding=10)
         frame_original.pack(fill=tk.X, pady=(0, 10))
         
         self.var_texte_original = tk.StringVar(value="Le texte formaté apparaîtra ici au lancement...")
@@ -189,7 +199,7 @@ class ApplicationMCMC(tk.Tk):
 
         ttk.Label(dialog, text="Collez ou tapez votre texte ci-dessous :").pack(pady=(10, 5), padx=10, anchor=tk.W)
         
-        # Une liste mutable permet au callback de transmettre sa valeur à la
+        # Une liste mutable permet au callback de transmettre sa valeur à la 
         # portée appelante avant la fermeture de la fenêtre modale.
         resultat = [""]
         def valider():
@@ -209,9 +219,8 @@ class ApplicationMCMC(tk.Tk):
     def preparer_texte_cible(self, langue: str) -> str:
         """
         Charge le texte cible selon la source choisie dans l'interface.
-
-        La méthode centralise les quatre modes d'entrée afin que le lancement
-        de l'attaque reçoive toujours un texte brut, quelle que soit son origine.
+        La méthode centralise les entrées afin que le lancement de l'attaque 
+        reçoive toujours un texte brut, qu'il soit clair ou déjà chiffré.
         """
         choix = self.combo_source.get()
         
@@ -222,10 +231,10 @@ class ApplicationMCMC(tk.Tk):
                 with open(os.path.join(dossier, random.choice(fichiers)), 'r', encoding='utf-8') as f:
                     return f.read()
                     
-        elif "fichier local" in choix:
+        elif "Fichier" in choix: # Gère le fichier local pour Clair ET Cryptogramme
             dossier_initial = os.path.abspath(os.path.join('data', langue.lower()))
             chemin = filedialog.askopenfilename(
-                title="Sélectionnez un fichier texte à attaquer",
+                title="Sélectionnez un fichier texte",
                 initialdir=dossier_initial,
                 filetypes=[("Fichiers Texte", "*.txt"), ("Tous les fichiers", "*.*")]
             )
@@ -233,7 +242,7 @@ class ApplicationMCMC(tk.Tk):
                 with open(chemin, 'r', encoding='utf-8') as f:
                     return f.read()
                     
-        elif "coller" in choix:
+        elif "Coller" in choix: # Gère la saisie manuelle pour Clair ET Cryptogramme
             return self.demander_texte_manuel()
             
         elif "Wikipédia" in choix:
@@ -247,7 +256,6 @@ class ApplicationMCMC(tk.Tk):
 
     def demarrer_mcmc(self):
         """Prépare le modèle statistique puis lance l'attaque dans un thread."""
-        # Une seule attaque peut modifier les données affichées à la fois.
         if self.en_cours: return
         langue = self.combo_langue.get().lower()
         if not langue: return
@@ -256,11 +264,13 @@ class ApplicationMCMC(tk.Tk):
         if not texte_brut:
             return 
             
-        # L'ajout d'un texte fourni par l'utilisateur modifie durablement le
-        # modèle statistique ; une confirmation évite d'y intégrer un texte
-        # dans une langue incorrecte.
         choix_source = self.combo_source.get()
-        if "Aléatoire" not in choix_source:
+        est_cryptogramme = "Cryptogramme" in choix_source
+        
+        # L'ajout d'un texte clair fourni par l'utilisateur peut enrichir le modèle.
+        # En revanche, on interdit STRICTEMENT l'enregistrement d'un cryptogramme pour 
+        # ne pas polluer mathématiquement les probabilités de notre langue.
+        if "Aléatoire" not in choix_source and not est_cryptogramme:
             reponse = messagebox.askyesno(
                 "Mise à jour du Modèle Statistique", 
                 "Voulez-vous ENREGISTRER les statistiques de ce texte dans la matrice de la langue étudiée ?\n\n"
@@ -280,8 +290,11 @@ class ApplicationMCMC(tk.Tk):
         with open(chemin_stats, 'r', encoding='utf-8') as f:
             stats = json.load(f)
             
+        # Même s'il s'agit d'un cryptogramme, on le nettoie pour s'assurer
+        # qu'il respecte l'alphabet [A-Z ] attendu par le moteur de score.
         texte_propre = nettoyer_texte(texte_brut)
         texte_clair = texte_propre[:2000]
+        
         self.var_texte_original.set(f"{texte_clair[:120]}...")
         
         n_gram = self.var_ngram.get()
@@ -289,14 +302,8 @@ class ApplicationMCMC(tk.Tk):
         dico_stats = stats.get(cle_stats, {})
         total_ngrams = max(1, sum(dico_stats.values()))
         
-        # Les occurrences sont converties en poids logarithmiques. L'échelle
-        # correspond à la formule 1.5 du sujet : r(x, y) = 1 + occurrences
-        # observées dans le corpus de référence.
+        # Normalisation et Lissage de la courbe 
         echelle_ref = 10000.0 if n_gram == 3 else 2500.0
-        
-        # Le facteur de lissage réduit l'amplitude des écarts de score. La
-        # chaîne peut ainsi accepter certaines dégradations et sortir d'un
-        # optimum local au lieu de rester bloquée trop tôt.
         facteur_lissage = 6.0
         
         log_stats = {
@@ -306,6 +313,7 @@ class ApplicationMCMC(tk.Tk):
         
         type_attaque = self.combo_attaque.get()
         iterations = int(self.spin_iterations.get())
+        taille_bloc = int(self.spin_taille_bloc.get())
         
         self.en_cours = True
         self.btn_lancer.state(['disabled'])
@@ -317,8 +325,6 @@ class ApplicationMCMC(tk.Tk):
         self.txt_rapport.insert(tk.END, "Attaque en cours... Veuillez patienter.")
         self.txt_rapport.config(state=tk.DISABLED)
         
-        # ``clear`` supprime également les titres, labels et légendes ; ils
-        # doivent être recréés avant de tracer les nouvelles données.
         self.ax.clear()
         self.ax.set_title("Évolution du Log-Score (Acceptations et rejets)")
         self.ax.set_xlabel("Itérations")
@@ -326,47 +332,53 @@ class ApplicationMCMC(tk.Tk):
         
         self.ligne_score, = self.ax.plot([], [], 'b-', linewidth=1.2, alpha=0.8)
         
-        # Les premières itérations servent à rejoindre une zone représentative
-        # de l'espace des clés. Elles ne sont pas utilisées pour le classement.
         burn_in = int(iterations * 0.15)
         self.ax.axvline(x=burn_in, color='r', linestyle='--', label=f"Fin Chauffe ({burn_in})")
         self.ax.legend()
         
-        # Les calculs de déchiffrement et de score sont coûteux. Le thread
-        # principal reste ainsi disponible pour rafraîchir l'interface.
-        thread = threading.Thread(target=self.boucle_mcmc,
-                                  args=(texte_clair, type_attaque, iterations, log_stats, n_gram, burn_in))
+        # Passage des nouveaux drapeaux au thread MCMC (gestion du cryptogramme direct + taille de bloc dynamique)
+        thread = threading.Thread(target=self.boucle_mcmc, 
+                                  args=(texte_clair, type_attaque, iterations, log_stats, n_gram, burn_in, est_cryptogramme, taille_bloc))
         thread.daemon = True
         thread.start()
 
-    def boucle_mcmc(self, texte_clair: str, type_attaque: str, iterations: int, log_stats: dict, n_gram: int, burn_in: int):
+    def boucle_mcmc(self, texte_base: str, type_attaque: str, iterations: int, log_stats: dict, n_gram: int, burn_in: int, est_cryptogramme: bool, taille_bloc: int):
         """
         Explore l'espace des clés avec l'algorithme de Metropolis-Hastings.
-
-        À chaque itération, une clé voisine est générée puis comparée à la
-        clé courante. Les meilleures clés sont toujours acceptées ; les clés
-        moins bonnes peuvent l'être selon une probabilité dépendant de
-        l'écart de score. Cette étape limite le risque de rester dans un
-        optimum local.
+        Gère dynamiquement si l'entrée est un texte clair à chiffrer en interne, 
+        ou un cryptogramme externe fourni.
         """
-        if "Substitution" in type_attaque:
-            cle_secrete = substitution.generer_cle()
-            cryptogramme = substitution.chiffrer_texte(texte_clair, cle_secrete)
-            cle_courante = substitution.generer_cle()
-            texte_courant = substitution.dechiffrer_texte(cryptogramme, cle_courante)
-        else:
-            taille_bloc = 10
-            cle_secrete = permutation.generer_cle(taille_bloc)
-            cryptogramme = permutation.chiffrer_permutation(texte_clair, cle_secrete)
-            cle_courante = permutation.generer_cle(taille_bloc)
-            texte_courant = permutation.dechiffrer_permutation(cryptogramme, cle_courante)
+        
+        # 1. ÉTAPE D'INITIALISATION : Cible et point de départ aléatoire
+        if est_cryptogramme:
+            # Bypass du chiffrement interne : la cible est directement le texte fourni
+            cryptogramme = texte_base
+            cle_secrete = "INCONNUE"
             
-        # Le score initial sert de référence pour calculer le gain ou la perte
-        # associé à chaque proposition de clé.
+            if "Substitution" in type_attaque:
+                cle_courante = substitution.generer_cle()
+                texte_courant = substitution.dechiffrer_texte(cryptogramme, cle_courante)
+            else:
+                cle_courante = permutation.generer_cle(taille_bloc)
+                texte_courant = permutation.dechiffrer_permutation(cryptogramme, cle_courante)
+        else:
+            # Mode standard : on génère un problème aléatoire pour la démonstration
+            if "Substitution" in type_attaque:
+                cle_secrete = substitution.generer_cle()
+                cryptogramme = substitution.chiffrer_texte(texte_base, cle_secrete)
+                cle_courante = substitution.generer_cle()
+                texte_courant = substitution.dechiffrer_texte(cryptogramme, cle_courante)
+            else:
+                cle_secrete = permutation.generer_cle(taille_bloc)
+                cryptogramme = permutation.chiffrer_permutation(texte_base, cle_secrete)
+                cle_courante = permutation.generer_cle(taille_bloc)
+                texte_courant = permutation.dechiffrer_permutation(cryptogramme, cle_courante)
+            
         score_courant = calculer_log_score(texte_courant, log_stats, n_gram)
         frequences_visites = {}
         scores_cles = {}
         
+        # 2. BOUCLE DE METROPOLIS-HASTINGS
         for i in range(iterations):
             if "Substitution" in type_attaque:
                 cle_voisine = substitution.muter_substitution(cle_courante)
@@ -378,36 +390,25 @@ class ApplicationMCMC(tk.Tk):
             score_voisin = calculer_log_score(texte_voisin, log_stats, n_gram)
             delta = score_voisin - score_courant
             
-            # Test de Metropolis-Hastings en logarithmes. Avec U uniforme sur
-            # ]0, 1[, la comparaison évite de calculer directement un rapport
-            # de scores potentiellement très petit.
+            # Test d'acceptation probabiliste
             if delta > 0 or math.log(random.uniform(0, 1)) < delta:
                 cle_courante = cle_voisine
                 score_courant = score_voisin
                 texte_courant = texte_voisin
                 
-            # Après la période de chauffe, les visites servent à estimer les
-            # clés les plus probables. Une liste est convertie en tuple pour
-            # pouvoir l'utiliser comme clé de dictionnaire.
             if i >= burn_in:
                 cle_mem = tuple(cle_courante) if isinstance(cle_courante, list) else cle_courante
                 frequences_visites[cle_mem] = frequences_visites.get(cle_mem, 0) + 1
                 scores_cles[cle_mem] = score_courant
                 
-            # Toutes les itérations sont conservées pour représenter les
-            # oscillations réelles du score, y compris les rejets.
             self.x_data.append(i)
             self.y_data.append(score_courant)
                 
             if i % 100 == 0 or i == iterations - 1:
-                # ``after`` planifie la mise à jour dans le thread Tkinter ;
-                # les widgets ne doivent pas être manipulés depuis ce thread.
                 self.after(0, self.maj_graphique_draw, texte_courant)
-        
-        # Le classement est établi sur la fréquence des visites après chauffe,
-        # tandis que ``scores_cles`` conserve le score associé à chaque clé.
+                
         top_cles = sorted(frequences_visites.items(), key=lambda x: x[1], reverse=True)[:3]
-        self.after(0, self.terminer_attaque, top_cles, scores_cles, cle_secrete, type_attaque, cryptogramme, texte_clair)
+        self.after(0, self.terminer_attaque, top_cles, scores_cles, cle_secrete, type_attaque, cryptogramme, texte_base)
 
     def maj_graphique_draw(self, texte: str):
         """Actualise le texte, le score et l'échelle du graphique dans Tkinter."""
@@ -418,12 +419,17 @@ class ApplicationMCMC(tk.Tk):
         self.ax.autoscale_view()
         self.canvas.draw_idle() 
 
-    def terminer_attaque(self, top_cles: list, scores_cles: dict, cle_secrete, type_attaque: str, cryptogramme: str, texte_clair: str):
+    def terminer_attaque(self, top_cles: list, scores_cles: dict, cle_secrete, type_attaque: str, cryptogramme: str, texte_base: str):
         """Construit le rapport final à partir des clés les plus visitées."""
         self.en_cours = False
         self.btn_lancer.state(['!disabled'])
         
-        rapport = f"Clé cible : {cle_secrete}\n"
+        # Adaptation de l'entête du rapport selon la connaissance ou non de la clé secrète
+        if cle_secrete == "INCONNUE":
+            rapport = "Clé cible : INCONNUE (Cryptogramme fourni)\n"
+        else:
+            rapport = f"Clé cible : {cle_secrete}\n"
+            
         rapport += "-"*60 + "\n"
         
         for rang, (cle, visites) in enumerate(top_cles, 1):
@@ -431,22 +437,27 @@ class ApplicationMCMC(tk.Tk):
                 cle = list(cle)
                 texte_dechiffre = permutation.dechiffrer_permutation(cryptogramme, cle)
                 cle_mem = tuple(cle)
+                taille_absolue = len(cle)
             else:
                 texte_dechiffre = substitution.dechiffrer_texte(cryptogramme, cle)
                 cle_mem = cle
+                taille_absolue = 26
 
-            # La première clé du classement constitue le meilleur aperçu à
-            # afficher immédiatement à l'utilisateur.
             if rang == 1:
                 self.var_texte_courant.set(f"[Meilleure clé #1] {texte_dechiffre[:120]}...")
 
-            exactes = sum(1 for a, b in zip(cle_secrete, cle) if a == b)
-            total = len(cle_secrete)
             score_log = scores_cles.get(cle_mem, 0)
             
-            rapport += f"#{rang} | Visites : {visites} | Score : {score_log:.2f} | Précision : {exactes}/{total}\n"
+            # Formatage de la précision absolue : Incalculable si la clé est inconnue
+            if cle_secrete == "INCONNUE":
+                prec_str = f"?/{taille_absolue}"
+            else:
+                exactes = sum(1 for a, b in zip(cle_secrete, cle) if a == b)
+                prec_str = f"{exactes}/{taille_absolue}"
+            
+            rapport += f"#{rang} | Visites : {visites} | Score : {score_log:.2f} | Précision : {prec_str}\n"
             rapport += f"Clé : {cle}\n"
-            rapport += f"Décodé : {texte_dechiffre[:120]}...\n\n"
+            rapport += f"Décodé : {texte_dechiffre[:200]}...\n\n"
             
         self.txt_rapport.config(state=tk.NORMAL)
         self.txt_rapport.delete(1.0, tk.END)

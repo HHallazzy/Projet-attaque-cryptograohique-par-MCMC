@@ -1,6 +1,7 @@
 """
 Interface en Ligne de Commande (CLI) pour l'outil de Cryptanalyse MCMC.
 Permet d'exécuter des attaques par chaînes de Markov (Metropolis-Hastings) directement dans le terminal.
+Intègre la prise en charge de textes clairs (pour générer des cibles) et de cryptogrammes fournis.
 """
 
 import math
@@ -17,11 +18,8 @@ sys.path.insert(0, os.path.abspath('src'))
 import substitution
 import permutation
 from attaque_mcmc import attaque_mcmc_substitution, attaque_mcmc_permutation
-# Importation de tous les outils statistiques pour permettre la sauvegarde optionnelle
-# Ces fonctions servent à récupérer un texte externe et, si l'utilisateur
-# l'autorise, à mettre à jour les modèles statistiques de la langue choisie.
 from wiki_statistiques import (
-    obtenir_texte_reference, nettoyer_texte, 
+    obtenir_texte_reference, nettoyer_texte,
     calculer_statistiques, calculer_statistiques_ngrams, sauvegarder_statistiques_json
 )
 
@@ -31,7 +29,7 @@ def selectionner_langue() -> str:
     if not os.path.exists(dossier_data):
         print("[ERREUR] Le dossier 'data' est introuvable. Lancez 'wiki_statistiques.py' en premier.")
         return None
-        
+
     # Chaque sous-dossier représente une langue et contient ses textes ainsi
     # que le fichier de statistiques utilisé par l'attaque.
     langues = sorted([d for d in os.listdir(dossier_data) if os.path.isdir(os.path.join(dossier_data, d))])
@@ -73,7 +71,6 @@ def choisir_fichier_local(langue: str) -> str:
         return None
         
     # La pagination évite d'afficher une liste trop longue dans le terminal.
-    # `page` est indexée à partir de zéro, tandis que l'affichage commence à 1.
     page, limite = 0, 10
     total_pages = max(1, (len(fichiers) - 1) // limite + 1)
     
@@ -88,44 +85,66 @@ def choisir_fichier_local(langue: str) -> str:
         instructions = f"Entrez un numéro (1-{len(fichiers_page)}), 'S' (Suivant), 'P' (Précédent), ou 'R' (Retour)"
         choix = input(f"{instructions} : ").strip().upper()
         
-        if choix == 'R': return None
-        elif choix == 'S' and page < total_pages - 1: page += 1
-        elif choix == 'P' and page > 0: page -= 1
+        if choix == 'R':
+            return None 
+        elif choix == 'S' and page < total_pages - 1:
+            page += 1
+        elif choix == 'P' and page > 0:
+            page -= 1
         elif choix.isdigit() and 1 <= int(choix) <= len(fichiers_page):
             fichier_choisi = fichiers_page[int(choix) - 1]
             with open(os.path.join(dossier_langue, fichier_choisi), 'r', encoding='utf-8') as f:
                 return f.read()
 
-def choisir_source_texte(langue: str) -> tuple:
-    """Retourne le texte cible et un booléen indiquant s'il provient d'une source externe (pour sauvegarde stats)."""
+def demander_texte_manuel() -> str:
+    """Permet de coller un texte chiffré directement dans le terminal."""
+    print("\nCollez votre texte chiffré ci-dessous (appuyez sur Entrée à vide pour valider) :")
+    lignes = []
     while True:
-        print("\n--- SOURCE DU TEXTE À ATTAQUER ---")
-        print("1. Tirer un texte au hasard dans la base de données locale")
-        print("2. Fournir une page Wikipédia précise (Titre ou URL complète)")
-        print("3. Choisir un texte spécifique dans la base locale (Liste paginée)")
-        
-        choix = input("Votre choix (1/2/3) : ").strip()
+        ligne = input()
+        if not ligne:
+            break
+        lignes.append(ligne)
+    return " ".join(lignes).strip()
+
+def demander_fichier_absolu() -> str:
+    """Permet de charger un fichier externe via son chemin."""
+    chemin = input("\nEntrez le chemin absolu ou relatif de votre fichier (.txt) : ").strip().strip("\"'")
+    if os.path.exists(chemin):
+        with open(chemin, 'r', encoding='utf-8') as f:
+            return f.read()
+    print(f"[ERREUR] Le fichier '{chemin}' est introuvable.")
+    return None
+
+def choisir_source_texte(langue: str) -> tuple:
+    """Retourne (texte, est_nouveau, est_cryptogramme) selon le choix de l'utilisateur."""
+    while True:
+        print("\n--- SOURCE DE LA CIBLE ---")
+        print("1. Texte Clair : Tirer au hasard dans la base locale")
+        print("2. Texte Clair : Choisir dans la base locale (Liste)")
+        print("3. Texte Clair : Fournir une page Wikipédia")
+        print("4. Cryptogramme : Coller le texte chiffré")
+        print("5. Cryptogramme : Fournir le chemin d'un fichier .txt")
+        choix = input("Votre choix (1-5) : ").strip()
         
         if choix == "1":
-            return charger_texte_cible(langue), False
-            
+            return charger_texte_cible(langue), False, False
         elif choix == "2":
+            return choisir_fichier_local(langue), True, False
+        elif choix == "3":
             saisie = input("\nEntrez le titre de la page ou l'URL : ").strip()
             if "wikipedia.org/wiki/" in saisie:
-                # Une URL Wikipédia encode parfois les caractères accentués.
-                # On extrait uniquement le titre puis on le décode avant l'appel
-                # réseau afin que le module de récupération reçoive un titre lisible.
                 saisie = urllib.parse.unquote(saisie.split("wikipedia.org/wiki/")[-1])
-
             texte = obtenir_texte_reference(saisie, lang=langue)
-            # Une source externe peut enrichir le modèle, mais uniquement après
-            # confirmation explicite de l'utilisateur dans la boucle principale.
-            return texte, True
-            
-        elif choix == "3":
-            return choisir_fichier_local(langue), True
-            
-        print("[ERREUR] Veuillez taper '1', '2' ou '3'.")
+            return texte, True, False
+        elif choix == "4":
+            texte = demander_texte_manuel()
+            return texte, False, True
+        elif choix == "5":
+            texte = demander_fichier_absolu()
+            return texte, False, True
+        else:
+            print("[ERREUR] Veuillez taper un nombre entre 1 et 5.")
 
 def selectionner_ngram() -> int:
     """Définit la profondeur de l'analyse linguistique (Digrammes ou Trigrammes)."""
@@ -163,19 +182,18 @@ def main():
         if choix == "3": break
             
         elif choix in ["1", "2"]:
-            texte_complet, est_nouveau = choisir_source_texte(langue)
-            if not texte_complet: continue
+            resultat = choisir_source_texte(langue)
+            if not resultat or not resultat[0]: continue
+            texte_brut, est_nouveau, est_cryptogramme = resultat
             
-            # Un texte choisi manuellement ou téléchargé peut ne pas appartenir
-            # à la langue sélectionnée. La confirmation évite donc d'ajouter
-            # des fréquences incohérentes au modèle de référence.
-            if est_nouveau:
-                print("\n[?] Ce texte n'est pas issu du tirage aléatoire standard.")
+            # Sécurité anti-pollution : Ne propose d'apprendre que si c'est un texte clair externe
+            if est_nouveau and not est_cryptogramme:
+                print("\n[?] Ce texte clair n'est pas issu du tirage aléatoire standard.")
                 print("Voulez-vous ENREGISTRER ses statistiques dans la matrice d'apprentissage ?")
                 print("(⚠️ Répondez NON si le texte n'est pas dans la bonne langue pour éviter de polluer le modèle)")
                 rep_save = input("Votre choix (O/N) : ").strip().upper()
                 if rep_save == 'O':
-                    tp = nettoyer_texte(texte_complet)
+                    tp = nettoyer_texte(texte_brut)
                     sauvegarder_statistiques_json(
                         calculer_statistiques(tp), 
                         calculer_statistiques_ngrams(tp, 2), 
@@ -183,68 +201,68 @@ def main():
                         f"Texte_Manuel_{random.randint(100, 999)}", lang=langue
                     )
                     print("[INFO] Modèle statistique mis à jour avec succès.")
-                
-            # La limite réduit le coût de l'attaque tout en conservant assez de
-            # contexte linguistique pour distinguer les clés candidates.
-            texte_clair = texte_complet[:2500]
+            
+            # Nettoyage systématique pour garantir le format mathématique, même sur un cryptogramme
+            texte_cible = nettoyer_texte(texte_brut)[:2500] 
+            
             n_gram = selectionner_ngram()
             stats_brutes = stats_tri if n_gram == 3 else stats_dig
             
-            # Les fréquences sont normalisées par le nombre total de n-grammes.
-            # La valeur minimale 1 empêche une division par zéro si le fichier
-            # de statistiques est vide ou incomplet.
+            # Normalisation et Lissage de la courbe
             total_ngrams = max(1, sum(stats_brutes.values()))
-            # Les trigrammes sont plus nombreux et plus discriminants : leur
-            # échelle de référence est donc plus élevée que celle des digrammes.
             echelle_ref = 10000.0 if n_gram == 3 else 2500.0
             facteur_lissage = 6.0
             
-            # Le logarithme transforme les produits de probabilités en sommes,
-            # ce qui limite les sous-dépassements numériques. Le lissage `1 +`
-            # garantit en outre une valeur définie pour chaque n-gramme observé.
             log_stats_actives = {
-                k: math.log(1.0 + (v / total_ngrams) * echelle_ref) / facteur_lissage 
+                k: math.log(1.0 + (v / total_ngrams) * echelle_ref) / facteur_lissage
                 for k, v in stats_brutes.items() if v > 0
             }
 
-            # Une chaîne plus longue explore davantage de clés, mais augmente le
-            # temps de calcul. 10 000 itérations constituent le compromis proposé
-            # par défaut pour une exécution interactive.
             iterations_str = input("\nCombien d'itérations pour le MCMC ? (Défaut: 10000) : ").strip()
             iterations = int(iterations_str) if iterations_str.isdigit() else 10000
 
             if choix == "1":
-                # Le cryptogramme est généré à partir d'une clé connue uniquement
-                # pour permettre de mesurer la qualité de l'attaque simulée.
-                cle_secrete = substitution.generer_cle()
-                cryptogramme = substitution.chiffrer_texte(texte_clair, cle_secrete)
-                print(f"\n[>] Lancement de l'attaque MCMC sur {iterations} itérations...")
+                if est_cryptogramme:
+                    cryptogramme = texte_cible
+                    cle_secrete = "INCONNUE"
+                    print("\n[+] Cible chargée directement depuis le cryptogramme fourni.")
+                else:
+                    cle_secrete = substitution.generer_cle()
+                    cryptogramme = substitution.chiffrer_texte(texte_cible, cle_secrete)
+                    print("\n[+] Création de la cible (Substitution) terminée.")
+                    
+                print(f"[>] Lancement de l'attaque MCMC sur {iterations} itérations...")
                 top_cles = attaque_mcmc_substitution(cryptogramme, iterations, log_stats_actives, n_gram)
                 
                 print("\n--- RÉSULTATS (CLÉS LES PLUS VISITÉES APRÈS CHAUFFE) ---")
                 for rang, (cle, visites) in enumerate(top_cles[:3], 1):
                     texte_dechiffre = substitution.dechiffrer_texte(cryptogramme, cle)
-                    # La comparaison position par position mesure le nombre de
-                    # lettres correctement retrouvées par la chaîne de Markov.
-                    print(f"\n[#{rang}] Visites : {visites} fois | Précision : {sum(1 for a, b in zip(cle_secrete, cle) if a == b)}/26")
-                    print(f"Clé : {cle}\nTexte : {texte_dechiffre[:120]}...")
+                    prec_str = "?/26" if cle_secrete == "INCONNUE" else f"{sum(1 for a, b in zip(cle_secrete, cle) if a == b)}/26"
+                    print(f"\n[#{rang}] Visites : {visites} fois | Précision absolue : {prec_str}")
+                    print(f"Clé : {cle}\nDécodé : {texte_dechiffre[:120]}...")
 
             elif choix == "2":
-                # La permutation travaille sur des blocs de taille fixe ; chaque
-                # clé est donc une permutation des positions de ce bloc.
-                taille_bloc = 10
-                cle_secrete = permutation.generer_cle(taille_bloc)
-                cryptogramme = permutation.chiffrer_permutation(texte_clair, cle_secrete)
-                print(f"\n[>] Lancement de l'attaque MCMC sur {iterations} itérations...")
+                taille_bloc_str = input("\nTaille du bloc pour la permutation (Défaut: 10) : ").strip()
+                taille_bloc = int(taille_bloc_str) if taille_bloc_str.isdigit() else 10
+                
+                if est_cryptogramme:
+                    cryptogramme = texte_cible
+                    cle_secrete = "INCONNUE"
+                    print(f"\n[+] Cible chargée depuis le cryptogramme fourni (Blocs de {taille_bloc}).")
+                else:
+                    cle_secrete = permutation.generer_cle(taille_bloc)
+                    cryptogramme = permutation.chiffrer_permutation(texte_cible, cle_secrete)
+                    print(f"\n[+] Création de la cible (Permutation, Blocs de {taille_bloc}) terminée.")
+                    
+                print(f"[>] Lancement de l'attaque MCMC sur {iterations} itérations...")
                 top_cles = attaque_mcmc_permutation(cryptogramme, iterations, log_stats_actives, taille_bloc, n_gram)
                 
                 print("\n--- RÉSULTATS (CLÉS LES PLUS VISITÉES APRÈS CHAUFFE) ---")
                 for rang, (cle, visites) in enumerate(top_cles[:3], 1):
                     texte_dechiffre = permutation.dechiffrer_permutation(cryptogramme, cle)
-                    # Pour une permutation, la précision compare les positions
-                    # du bloc et non les 26 lettres de l'alphabet.
-                    print(f"\n[#{rang}] Visites : {visites} fois | Précision : {sum(1 for a, b in zip(cle_secrete, cle) if a == b)}/{taille_bloc}")
-                    print(f"Clé : {cle}\nTexte : {texte_dechiffre[:120]}...")
+                    prec_str = f"?/{taille_bloc}" if cle_secrete == "INCONNUE" else f"{sum(1 for a, b in zip(cle_secrete, cle) if a == b)}/{taille_bloc}"
+                    print(f"\n[#{rang}] Visites : {visites} fois | Précision absolue : {prec_str}")
+                    print(f"Clé : {cle}\nDécodé : {texte_dechiffre[:200]}...")
 
 if __name__ == "__main__":
     main()
