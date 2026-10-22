@@ -18,6 +18,10 @@ sys.path.insert(0, os.path.abspath('src'))
 import substitution
 import permutation
 from attaque_mcmc import attaque_mcmc_substitution, attaque_mcmc_permutation
+
+# Importation de tous les outils statistiques pour permettre la sauvegarde optionnelle
+# Ces fonctions servent à récupérer un texte externe et, si l'utilisateur
+# l'autorise, à mettre à jour les modèles statistiques de la langue choisie.
 from wiki_statistiques import (
     obtenir_texte_reference, nettoyer_texte,
     calculer_statistiques, calculer_statistiques_ngrams, sauvegarder_statistiques_json
@@ -71,6 +75,7 @@ def choisir_fichier_local(langue: str) -> str:
         return None
         
     # La pagination évite d'afficher une liste trop longue dans le terminal.
+    # `page` est indexée à partir de zéro, tandis que l'affichage commence à 1.
     page, limite = 0, 10
     total_pages = max(1, (len(fichiers) - 1) // limite + 1)
     
@@ -134,8 +139,13 @@ def choisir_source_texte(langue: str) -> tuple:
         elif choix == "3":
             saisie = input("\nEntrez le titre de la page ou l'URL : ").strip()
             if "wikipedia.org/wiki/" in saisie:
+                # Une URL Wikipédia encode parfois les caractères accentués.
+                # On extrait uniquement le titre puis on le décode avant l'appel
+                # réseau afin que le module de récupération reçoive un titre lisible.
                 saisie = urllib.parse.unquote(saisie.split("wikipedia.org/wiki/")[-1])
             texte = obtenir_texte_reference(saisie, lang=langue)
+            # Une source externe peut enrichir le modèle, mais uniquement après
+            # confirmation explicite de l'utilisateur dans la boucle principale.
             return texte, True, False
         elif choix == "4":
             texte = demander_texte_manuel()
@@ -186,7 +196,9 @@ def main():
             if not resultat or not resultat[0]: continue
             texte_brut, est_nouveau, est_cryptogramme = resultat
             
-            # Sécurité anti-pollution : Ne propose d'apprendre que si c'est un texte clair externe
+            # Un texte choisi manuellement ou téléchargé peut ne pas appartenir
+            # à la langue sélectionnée. La confirmation évite donc d'ajouter
+            # des fréquences incohérentes au modèle de référence.
             if est_nouveau and not est_cryptogramme:
                 print("\n[?] Ce texte clair n'est pas issu du tirage aléatoire standard.")
                 print("Voulez-vous ENREGISTRER ses statistiques dans la matrice d'apprentissage ?")
@@ -202,26 +214,48 @@ def main():
                     )
                     print("[INFO] Modèle statistique mis à jour avec succès.")
             
-            # Nettoyage systématique pour garantir le format mathématique, même sur un cryptogramme
-            texte_cible = nettoyer_texte(texte_brut)[:2500] 
-            
+            # Si c'est un cryptogramme, on NE DOIT PAS fusionner les espaces multiples
+            # La permutation déplace les espaces, créant souvent des blocs de 2 ou 3 espaces.
+            # Les supprimer décalerait tous les blocs et détruirait le cryptogramme.
+            if est_cryptogramme:
+                texte_cible = texte_brut.replace('\n', '').replace('\r', '').upper()
+                # On retire juste les caractères parasites sans toucher aux espaces
+                texte_cible = ''.join(c for c in texte_cible if c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ ")
+                texte_cible = texte_cible[:2500]
+            else:
+                texte_propre = nettoyer_texte(texte_brut)
+                texte_cible = texte_propre[:2500]
+
             n_gram = selectionner_ngram()
             stats_brutes = stats_tri if n_gram == 3 else stats_dig
             
-            # Normalisation et Lissage de la courbe
+            # Les fréquences sont normalisées par le nombre total de n-grammes.
+            # La valeur minimale 1 empêche une division par zéro si le fichier
+            # de statistiques est vide ou incomplet.
             total_ngrams = max(1, sum(stats_brutes.values()))
+            
+            # Les trigrammes sont plus nombreux et plus discriminants : leur
+            # échelle de référence est donc plus élevée que celle des digrammes.
             echelle_ref = 10000.0 if n_gram == 3 else 2500.0
             facteur_lissage = 6.0
             
+            # Le logarithme transforme les produits de probabilités en sommes,
+            # ce qui limite les sous-dépassements numériques. Le lissage `1 +`
+            # garantit en outre une valeur définie pour chaque n-gramme observé.
             log_stats_actives = {
                 k: math.log(1.0 + (v / total_ngrams) * echelle_ref) / facteur_lissage
                 for k, v in stats_brutes.items() if v > 0
             }
 
+            # Une chaîne plus longue explore davantage de clés, mais augmente le
+            # temps de calcul. 10 000 itérations constituent le compromis proposé
+            # par défaut pour une exécution interactive.
             iterations_str = input("\nCombien d'itérations pour le MCMC ? (Défaut: 10000) : ").strip()
             iterations = int(iterations_str) if iterations_str.isdigit() else 10000
 
             if choix == "1":
+                # Le cryptogramme est généré à partir d'une clé connue uniquement
+                # pour permettre de mesurer la qualité de l'attaque simulée.
                 if est_cryptogramme:
                     cryptogramme = texte_cible
                     cle_secrete = "INCONNUE"
@@ -237,11 +271,15 @@ def main():
                 print("\n--- RÉSULTATS (CLÉS LES PLUS VISITÉES APRÈS CHAUFFE) ---")
                 for rang, (cle, visites) in enumerate(top_cles[:3], 1):
                     texte_dechiffre = substitution.dechiffrer_texte(cryptogramme, cle)
+                    # La comparaison position par position mesure le nombre de
+                    # lettres correctement retrouvées par la chaîne de Markov.
                     prec_str = "?/26" if cle_secrete == "INCONNUE" else f"{sum(1 for a, b in zip(cle_secrete, cle) if a == b)}/26"
                     print(f"\n[#{rang}] Visites : {visites} fois | Précision absolue : {prec_str}")
                     print(f"Clé : {cle}\nDécodé : {texte_dechiffre[:120]}...")
 
             elif choix == "2":
+                # La permutation travaille sur des blocs de taille fixe ; chaque
+                # clé est donc une permutation des positions de ce bloc.
                 taille_bloc_str = input("\nTaille du bloc pour la permutation (Défaut: 10) : ").strip()
                 taille_bloc = int(taille_bloc_str) if taille_bloc_str.isdigit() else 10
                 
@@ -260,6 +298,8 @@ def main():
                 print("\n--- RÉSULTATS (CLÉS LES PLUS VISITÉES APRÈS CHAUFFE) ---")
                 for rang, (cle, visites) in enumerate(top_cles[:3], 1):
                     texte_dechiffre = permutation.dechiffrer_permutation(cryptogramme, cle)
+                    # Pour une permutation, la précision compare les positions
+                    # du bloc et non les 26 lettres de l'alphabet.
                     prec_str = f"?/{taille_bloc}" if cle_secrete == "INCONNUE" else f"{sum(1 for a, b in zip(cle_secrete, cle) if a == b)}/{taille_bloc}"
                     print(f"\n[#{rang}] Visites : {visites} fois | Précision absolue : {prec_str}")
                     print(f"Clé : {cle}\nDécodé : {texte_dechiffre[:200]}...")

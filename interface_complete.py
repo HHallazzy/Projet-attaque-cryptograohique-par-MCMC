@@ -290,12 +290,33 @@ class ApplicationMCMC(tk.Tk):
         with open(chemin_stats, 'r', encoding='utf-8') as f:
             stats = json.load(f)
             
-        # Même s'il s'agit d'un cryptogramme, on le nettoie pour s'assurer
-        # qu'il respecte l'alphabet [A-Z ] attendu par le moteur de score.
-        texte_propre = nettoyer_texte(texte_brut)
-        texte_clair = texte_propre[:2000]
-        
+        # En cryptographie, particulièrement pour le chiffrement par permutation, 
+        # l'espace (" ") est un caractère à part entière qui est déplacé comme les autres.
+        # Cela génère fréquemment des suites de 2 ou 3 espaces consécutifs dans le cryptogramme.
+        # 
+        # Si nous utilisons la fonction standard 'nettoyer_texte' (qui fusionne les espaces multiples),
+        # nous allons supprimer ces espaces consécutifs. Cela décalerait tous les indices du texte
+        # et corromprait irrémédiablement la taille des blocs (ex: un bloc de 10 deviendrait un bloc de 8).
+        # 
+        # Règle : Si c'est un cryptogramme, on préserve strictement les espaces multiples.
+        if est_cryptogramme:
+            # 1. On remplace les sauts de ligne par des espaces pour garder une chaîne continue
+            texte_clair = texte_brut.replace('\n', ' ').replace('\r', ' ').upper()
+            
+            # 2. On filtre uniquement les caractères parasites (ponctuation, chiffres) 
+            # sans utiliser de regex fusionnante. L'intégrité structurelle est maintenue.
+            texte_clair = ''.join(c for c in texte_clair if c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ ")
+            texte_clair = texte_clair[:2500]
+            
+        else:
+            # S'il s'agit d'un texte clair (Wikipédia ou fichier local à chiffrer),
+            # on applique le nettoyage standard qui normalise les espaces pour éviter
+            # de créer des biais statistiques avant le chiffrement.
+            texte_propre = nettoyer_texte(texte_brut)
+            texte_clair = texte_propre[:2500]
+            
         self.var_texte_original.set(f"{texte_clair[:120]}...")
+        
         
         n_gram = self.var_ngram.get()
         cle_stats = "trigrammes" if n_gram == 3 else "digrammes"
